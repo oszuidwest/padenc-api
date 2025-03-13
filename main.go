@@ -2,10 +2,8 @@ package main
 
 // odr-webapi - a simple API for updating DLS text files
 // This API receives text via POST requests and writes it to a file
-// Version: 0.0.2
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -13,16 +11,24 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/spf13/pflag"
 )
 
-// Configuration for the application
+// Version information
+const (
+	AppName    = "odr-webapi"
+	AppVersion = "0.0.3"
+)
+
+// Config holds the application configuration
 type Config struct {
 	Port       int
 	TargetPath string
 	AuthToken  string
 }
 
-// Function to get the last update time of the file
+// getLastUpdateTime returns the last modification time of the specified file
 func getLastUpdateTime(filePath string) string {
 	fileInfo, err := os.Stat(filePath)
 	if err != nil {
@@ -35,7 +41,7 @@ func getLastUpdateTime(filePath string) string {
 	return fileInfo.ModTime().Format(time.RFC3339)
 }
 
-// Middleware to check for a valid authentication token
+// tokenAuthMiddleware validates the authentication token for protected endpoints
 func tokenAuthMiddleware(next http.HandlerFunc, config *Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Token is required for POST requests to /api/dls
@@ -57,24 +63,25 @@ func tokenAuthMiddleware(next http.HandlerFunc, config *Config) http.HandlerFunc
 }
 
 func main() {
-	// Configure command line options
-	config := Config{}
-	// Define flags without defaults - all are mandatory
-	var port = flag.Int("port", 0, "Port on which the API should run (mandatory)")
-	var target = flag.String("target", "", "Full path to DLS text file (mandatory)")
-	var token = flag.String("token", "", "Authentication token for API access (mandatory for POST requests)")
+	// Initialize configuration
+	var config Config
 
-	// Define custom usage function
-	flag.Usage = func() {
-		fmt.Println("odr-webapi - a simple API for updating DLS text files")
+	// Define command-line flags
+	pflag.IntP("port", "p", 0, "Port on which the API should run (mandatory)")
+	pflag.StringP("target", "t", "", "Full path to DLS text file (mandatory)")
+	pflag.StringP("token", "k", "", "Authentication token for API access (mandatory for POST requests)")
+
+	// Define custom usage information
+	pflag.Usage = func() {
+		fmt.Printf("%s v%s - a simple API for updating DLS text files\n", AppName, AppVersion)
 		fmt.Println("\nUsage:")
-		fmt.Println("  odr-webapi -port PORT -target TARGET_PATH -token AUTH_TOKEN")
+		fmt.Printf("  %s --port PORT --target TARGET_PATH --token AUTH_TOKEN\n", AppName)
 		fmt.Println("\nOptions:")
-		fmt.Println("  -port PORT")
+		fmt.Println("  --port, -p PORT")
 		fmt.Println("        Port on which the API should run")
-		fmt.Println("  -target TARGET_PATH")
+		fmt.Println("  --target, -t TARGET_PATH")
 		fmt.Println("        Full path to DLS text file")
-		fmt.Println("  -token AUTH_TOKEN")
+		fmt.Println("  --token, -k AUTH_TOKEN")
 		fmt.Println("        Authentication token for API access (required for POST requests)")
 		fmt.Println("\nEndpoints:")
 		fmt.Println("  POST /api/dls")
@@ -82,33 +89,51 @@ func main() {
 		fmt.Println("        Requires Authorization header with token")
 		fmt.Println("  GET  /api/status")
 		fmt.Println("        Returns the API status and last update time")
-		fmt.Println("\nExample:")
-		fmt.Println("  odr-webapi -port 9000 -target /dabplus/dls/dls.txt -token mySecretToken")
+		fmt.Println("\nExamples:")
+		fmt.Printf("  %s --port=9000 --target=/dabplus/dls/dls.txt --token=mySecretToken\n", AppName)
+		fmt.Printf("  %s --port 9000 --target /dabplus/dls/dls.txt --token mySecretToken\n", AppName)
 		fmt.Println("\nAuthentication:")
 		fmt.Println("  All POST requests must include the token in the Authorization header:")
 		fmt.Println("  curl -X POST -H \"Authorization: mySecretToken\" --data \"New DLS text\" http://localhost:9000/api/dls")
 	}
 
-	flag.Parse()
+	pflag.Parse()
 
-	// Check if all required parameters are provided
-	if *port <= 0 || *target == "" || *token == "" {
+	// Extract values from parsed flags
+	port, _ := pflag.CommandLine.GetInt("port")
+	target, _ := pflag.CommandLine.GetString("target")
+	token, _ := pflag.CommandLine.GetString("token")
+
+	// Validate required parameters
+	if port <= 0 || target == "" || token == "" {
 		fmt.Println("Error: All parameters (port, target, token) are mandatory")
-		flag.Usage()
+		pflag.Usage()
 		os.Exit(1)
 	}
 
-	// Assign values to config
-	config.Port = *port
-	config.TargetPath = *target
-	config.AuthToken = *token
+	// Populate configuration
+	config.Port = port
+	config.TargetPath = target
+	config.AuthToken = token
 
-	// Check if target directory exists
+	// Validate target directory existence
 	targetDir := filepath.Dir(config.TargetPath)
 	if _, err := os.Stat(targetDir); os.IsNotExist(err) {
 		log.Fatalf("Target directory does not exist: %s", targetDir)
 	}
 
+	// Set up API endpoints
+	setupEndpoints(&config)
+
+	// Start the server
+	serverAddr := fmt.Sprintf(":%d", config.Port)
+	log.Printf("%s v%s starting on http://localhost%s", AppName, AppVersion, serverAddr)
+	log.Printf("DLS text will be written to: %s", config.TargetPath)
+	log.Fatal(http.ListenAndServe(serverAddr, nil))
+}
+
+// setupEndpoints configures all API endpoints
+func setupEndpoints(config *Config) {
 	// Handler for writing text data
 	http.HandleFunc("/api/dls", tokenAuthMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		// Only allow POST method
@@ -142,7 +167,7 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, `{"status":"success","message":"Text successfully updated","lastUpdate":"%s"}`, lastUpdateTime)
 		log.Printf("Text successfully written to %s at %s", config.TargetPath, lastUpdateTime)
-	}, &config))
+	}, config))
 
 	// Status endpoint to check if the API is running (no authentication required)
 	http.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
@@ -151,10 +176,4 @@ func main() {
 		fmt.Fprintf(w, `{"status":"online","target":"%s","lastUpdate":"%s"}`,
 			config.TargetPath, lastUpdateTime)
 	})
-
-	// Start the server
-	serverAddr := fmt.Sprintf(":%d", config.Port)
-	log.Printf("ODR Web API starting on http://localhost%s", serverAddr)
-	log.Printf("DLS text will be written to: %s", config.TargetPath)
-	log.Fatal(http.ListenAndServe(serverAddr, nil))
 }

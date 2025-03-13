@@ -45,7 +45,6 @@ func main() {
 	// Define custom usage function
 	flag.Usage = func() {
 		fmt.Println("odr-webapi - a simple API for updating DLS text files")
-		fmt.Println("Version: 0.0.1")
 		fmt.Println("\nUsage:")
 		fmt.Println("  odr-webapi -port PORT -target TARGET_PATH")
 		fmt.Println("\nOptions:")

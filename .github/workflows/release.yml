@@ -45,6 +45,11 @@ jobs:
             go mod init github.com/${{ github.repository }}
           fi
           
+      - name: Download dependencies
+        run: |
+          go get github.com/oszuidwest/odr-webapi
+          go mod tidy
+          
       - name: Build
         env:
           GOOS: ${{ matrix.os }}

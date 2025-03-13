@@ -102,6 +102,6 @@ jobs:
           files: release_files/*
           tag_name: v${{ needs.extract-version.outputs.version }}
           name: "ODR Web API v${{ needs.extract-version.outputs.version }}"
-          generate_release_notes: true
+          generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

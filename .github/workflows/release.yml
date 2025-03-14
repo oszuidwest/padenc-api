@@ -1,10 +1,16 @@
 name: Build and Release ODR Web API
 on:
   workflow_dispatch:
+
+# Following the principle of least privilege
+permissions: {}
+
 jobs:
   extract-version:
     name: Extract Version
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       version: ${{ steps.get-version.outputs.version }}
     steps:
@@ -22,6 +28,9 @@ jobs:
     name: Build ODR Web API
     needs: extract-version
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      actions: write
     strategy:
       matrix:
         include:
@@ -67,6 +76,9 @@ jobs:
     name: Create GitHub Release
     needs: [build, extract-version]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

@@ -941,6 +941,7 @@ dependencies = [
  "chrono",
  "dotenv",
  "env_logger",
+ "futures-core",
  "log",
  "serde",
  "serde_json",

@@ -1,5 +1,6 @@
 mod config;
 mod handlers;
+mod middleware;
 mod models;
 mod services;
 
@@ -7,6 +8,7 @@ use actix_web::{web, App, HttpServer};
 use log::{error, info};
 use std::io;
 use std::sync::{Arc, Mutex};
+use middleware::auth::Auth;
 
 use crate::config::Config;
 use crate::models::AppState;
@@ -68,6 +70,7 @@ async fn main() -> io::Result<()> {
         App::new()
             .app_data(state.clone())
             .app_data(config_data.clone())
+            .wrap(Auth)
             .route("/track", web::post().to(handlers::track::post_track))
             .route("/track", web::delete().to(handlers::track::delete_track))
             .route("/program", web::post().to(handlers::program::post_program))

@@ -17,8 +17,19 @@ When no track or program is active (or when their expiry times have passed), the
 The server uses the following environment variables:
 - `STATION_NAME`: The name of the station to display when no metadata is active
 - `OUTPUT_FILE_PATH`: The path where the output file will be written
+- `API_KEY`: Secret key used for Bearer token authentication (required)
 
 You can set these variables in a `.env` file in the project root or pass them to the Docker container.
+
+## Authentication
+
+All API endpoints are protected by Bearer token authentication. You must include an `Authorization` header with a valid token in all requests:
+
+```
+Authorization: Bearer your_secret_api_key_here
+```
+
+The token should match the `API_KEY` environment variable value.
 
 ## API Endpoints
 
@@ -133,6 +144,7 @@ docker run -d \
   -p 8080:8080 \
   -e STATION_NAME=YourStation \
   -e OUTPUT_FILE_PATH=/data/track.txt \
+  -e API_KEY=your_secret_api_key_here \
   -v $(pwd)/data:/data \
   odr-metadata-server
 ```
@@ -142,6 +154,16 @@ docker run -d \
 Once running, the server can be accessed at:
 - http://localhost:8080/track
 - http://localhost:8080/program
+
+Remember to include the `Authorization: Bearer your_secret_api_key_here` header in all requests.
+
+Example using curl:
+```bash
+curl -X POST http://localhost:8080/track \
+  -H 'Authorization: Bearer your_secret_api_key_here' \
+  -H 'Content-Type: application/json' \
+  -d '{"item":{"title":"Viva la Vida","artist":"Coldplay"},"expires_at":"2025-05-15T15:00:00Z"}'
+```
 
 ### Using with ODR PADENC
 

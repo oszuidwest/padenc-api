@@ -1,21 +1,29 @@
 use actix_web::web;
 use chrono::Utc;
 use log::{debug, error, info};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::time::interval;
 
 use crate::config::Config;
+use crate::constants::fs::MOT_OUTPUT_DIR;
+use crate::constants::ticker::{CLEANUP_INTERVAL_TICKS, INTERVAL_MS};
 use crate::models::AppState;
-use crate::services::{FileService, OutputType};
+use crate::services::content_service::OutputType;
+use crate::services::{ContentService, DlsService, MotService};
 
 pub struct TickerService;
 
 impl TickerService {
     pub async fn start(app_state: Arc<web::Data<Mutex<AppState>>>, config: Arc<Config>) {
-        info!("Starting ticker service with 50-millisecond interval");
-        let mut interval_timer = interval(Duration::from_millis(50));
+        info!(
+            "Starting ticker service with {}-millisecond interval",
+            INTERVAL_MS
+        );
+        let mut interval_timer = interval(Duration::from_millis(INTERVAL_MS));
         let mut previous_output_type: Option<OutputType> = None;
+        let mot_dir = PathBuf::from(MOT_OUTPUT_DIR);
 
         loop {
             interval_timer.tick().await;
@@ -24,56 +32,60 @@ impl TickerService {
             match app_state.lock() {
                 Ok(state) => {
                     debug!("Ticker: Checking content expiration");
-                    
+
                     let now = Utc::now();
-                    let current_output_type = FileService::determine_output_type(&state, &config, now);
-                    
-                    let has_changed = match (&previous_output_type, &current_output_type) {
-                        (None, _) => true,
-                        (Some(prev), curr) => !Self::output_types_equal(prev, curr)
+                    let current_output_type = ContentService::get_active_output_type(&state, now);
+
+                    let has_changed = match &previous_output_type {
+                        None => true,
+                        Some(prev) => prev != &current_output_type,
                     };
-                    
+
                     if has_changed {
                         info!("Ticker: Content changed at {}", now);
-                        match &current_output_type {
-                            OutputType::Track(artist, title) => {
-                                info!("New content: Track \"{}\" by \"{}\"", title, artist);
-                            },
-                            OutputType::Program(name) => {
-                                info!("New content: Program \"{}\"", name);
-                            },
-                            OutputType::Station(name) => {
-                                info!("New content: Station \"{}\"", name);
-                            },
+                        match current_output_type {
+                            OutputType::Track => {
+                                if let Some(track) = &state.track {
+                                    info!(
+                                        "New content: Track \"{}\" by \"{}\"",
+                                        track.item.title, track.item.artist
+                                    );
+                                }
+                            }
+                            OutputType::Program => {
+                                if let Some(program) = &state.program {
+                                    info!("New content: Program \"{}\"", program.name);
+                                }
+                            }
+                            OutputType::Station => {
+                                info!("New content: Station \"{}\"", config.station_name);
+                            }
                         }
-                        
-                        if let Err(e) = FileService::update_file_with_content(&state, &current_output_type) {
+
+                        if let Err(e) = DlsService::update_output_file(&state, config.as_ref()) {
                             error!("Ticker: Failed to update output file: {}", e);
                         }
-                        
+
+                        if let Err(e) = MotService::update_mot_output(&state, &mot_dir) {
+                            error!("Ticker: Failed to update MOT output: {}", e);
+                        }
+
                         previous_output_type = Some(current_output_type);
+                    }
+
+                    // Run cleanup for expired images periodically
+                    // We'll do this on every Nth tick (according to CLEANUP_INTERVAL_TICKS)
+                    if now.timestamp() % CLEANUP_INTERVAL_TICKS == 0 {
+                        debug!("Ticker: Running image cleanup");
+                        if let Err(e) = MotService::cleanup_expired_images(&state) {
+                            error!("Ticker: Failed to clean up expired images: {}", e);
+                        }
                     }
                 }
                 Err(e) => {
                     error!("Ticker: Failed to acquire lock on app state: {}", e);
                 }
             }
-        }
-    }
-
-    fn output_types_equal(prev: &OutputType, curr: &OutputType) -> bool {
-        match (prev, curr) {
-            (OutputType::Track(prev_artist, prev_title), 
-             OutputType::Track(curr_artist, curr_title)) => {
-                prev_artist == curr_artist && prev_title == curr_title
-            },
-            (OutputType::Program(prev_name), OutputType::Program(curr_name)) => {
-                prev_name == curr_name
-            },
-            (OutputType::Station(prev_name), OutputType::Station(curr_name)) => {
-                prev_name == curr_name
-            },
-            _ => false,
         }
     }
 }

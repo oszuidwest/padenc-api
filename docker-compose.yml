@@ -8,43 +8,44 @@ services:
       - "8080:8080"
     environment:
       - STATION_NAME=BredaNu
-      - OUTPUT_FILE_PATH=/data/dls.txt
+      - DEFAULT_STATION_IMAGE=/tests/mock/station.jpg
       - RUST_LOG=info
       - API_KEY=your_secret_api_key_here
     volumes:
       - ./data:/data
     restart: unless-stopped
 
-  padenc:
-    image: ghcr.io/oszuidwest/odr-padenc:latest
-    container_name: odr-padenc
-    depends_on:
-      - odr-metadata-server
-    volumes:
-      - ./data:/data
-      - odr_socket:/tmp/dab
-    environment:
-      - DLS_FILE=/data/dls.txt
-    command: >
-      odr-padenc
-      --dls=/data/dls.txt
-      --output=dab/pad
-      --charset=0
-      --erase
-    restart: unless-stopped
+  # padenc:
+  #   image: ghcr.io/oszuidwest/odr-padenc:latest
+  #   container_name: odr-padenc
+  #   depends_on:
+  #     - odr-metadata-server
+  #   volumes:
+  #     - ./data:/data
+  #     - odr_socket:/tmp/dab
+  #   environment:
+  #     - DLS_FILE=/data/dls.txt
+  #   command: >
+  #     odr-padenc
+  #     --dls=/data/dls.txt
+  #     --dir=/data/mot
+  #     --output=dab/pad
+  #     --charset=0
+  #     --erase
+  #   restart: unless-stopped
 
-  audioenc:
-    image: ghcr.io/oszuidwest/odr-audioenc-full:latest
-    container_name: odr-audioenc
-    volumes:
-      - odr_socket:/tmp/dab
-    command: >
-      odr-audioenc
-      --vlc-uri http://icecast.bredanu.nl/bredanu.stl
-      -r 48000 -b 96
-      -P dab/pad
-      -e tcp://localhost:9000
-    restart: unless-stopped
+  # audioenc:
+  #   image: ghcr.io/oszuidwest/odr-audioenc-full:latest
+  #   container_name: odr-audioenc
+  #   volumes:
+  #     - odr_socket:/tmp/dab
+  #   command: >
+  #     odr-audioenc
+  #     --vlc-uri http://icecast.bredanu.nl/bredanu.stl
+  #     -r 48000 -b 96
+  #     -P dab/pad
+  #     -e tcp://localhost:9000
+  #   restart: unless-stopped
 
 volumes:
   odr_socket:

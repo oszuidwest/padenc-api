@@ -1,4 +1,6 @@
 use crate::config::Config;
+use crate::constants::api::{AUTH_HEADER, BEARER_PREFIX};
+use crate::errors::ServiceError;
 use actix_web::{
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
     http::header::{HeaderName, HeaderValue},
@@ -48,9 +50,7 @@ where
             None => {
                 error!("Config not found in application data");
                 return Box::pin(std::future::ready(Err(Error::from(
-                    actix_web::error::ErrorUnauthorized(
-                        "Server authentication configuration error",
-                    ),
+                    ServiceError::Auth("Server authentication configuration error".to_string())
                 ))));
             }
         };
@@ -60,14 +60,12 @@ where
             None => {
                 error!("API_KEY is not configured");
                 return Box::pin(std::future::ready(Err(Error::from(
-                    actix_web::error::ErrorUnauthorized(
-                        "Server authentication configuration error",
-                    ),
+                    ServiceError::Auth("Server authentication configuration error".to_string())
                 ))));
             }
         };
 
-        let auth_header = req.headers().get(HeaderName::from_static("authorization"));
+        let auth_header = req.headers().get(HeaderName::from_static(AUTH_HEADER));
         let auth_result = match auth_header {
             Some(auth_value) => validate_bearer_token(auth_value, api_key),
             None => {
@@ -84,7 +82,7 @@ where
             })
         } else {
             Box::pin(std::future::ready(Err(Error::from(
-                actix_web::error::ErrorUnauthorized("Invalid or missing API key"),
+                ServiceError::Auth("Invalid or missing API key".to_string())
             ))))
         }
     }
@@ -96,10 +94,10 @@ fn validate_bearer_token(auth_header: &HeaderValue, api_key: &str) -> bool {
         Err(_) => return false,
     };
 
-    if !auth_str.starts_with("Bearer ") {
+    if !auth_str.starts_with(BEARER_PREFIX) {
         return false;
     }
 
-    let token = auth_str.trim_start_matches("Bearer ").trim();
+    let token = auth_str.trim_start_matches(BEARER_PREFIX).trim();
     token == api_key
 }

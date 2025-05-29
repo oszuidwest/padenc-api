@@ -1,42 +1,86 @@
-mod config;
-mod handlers;
-mod middleware;
-mod models;
-mod services;
+// Import all modules from lib.rs
+use odr_metadata_server::{config, constants, errors, handlers, middleware, models, services};
 
+use actix_multipart::Multipart;
 use actix_web::{web, App, HttpServer};
 use log::{error, info};
-use std::io;
-use std::sync::{Arc, Mutex};
 use middleware::auth::Auth;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
-use crate::config::Config;
-use crate::models::AppState;
-use crate::services::{FileService, TickerService};
+use config::Config;
+use constants::api::DEFAULT_SERVER_PORT;
+use constants::fs::{DLS_OUTPUT_FILE, IMAGE_DIR, MOT_OUTPUT_DIR};
+use errors::{ServiceError, ServiceResult};
+use models::data::{Program, Track};
+use models::AppState;
+use services::{DlsService, MotService, TickerService};
 
 #[actix_web::main]
-async fn main() -> io::Result<()> {
+async fn main() -> ServiceResult<()> {
     env_logger::init();
     info!("Starting DAB metadata service");
 
     dotenv::dotenv().ok();
 
+    // Load configuration - will panic with error message if required values are missing
     let config = match Config::from_env() {
-        Ok(cfg) => cfg,
+        Ok(cfg) => {
+            info!(
+                "Configuration loaded successfully for station: {}",
+                cfg.station_name
+            );
+            cfg
+        }
         Err(e) => {
             error!("Failed to load configuration: {}", e);
-            return Err(io::Error::new(io::ErrorKind::Other, "Configuration error"));
+            return Err(ServiceError::Configuration(format!(
+                "Failed to load configuration: {}",
+                e
+            )));
         }
     };
 
-    let output_path = config.output_file_path.clone();
-    let server_port = "8080".to_string();
+    let server_port = DEFAULT_SERVER_PORT.to_string();
+
+    // Create directories for images and MOT output
+    let image_dir = PathBuf::from(IMAGE_DIR);
+    let mot_dir = PathBuf::from(MOT_OUTPUT_DIR);
+    info!("Initializing image directory at: {:?}", image_dir);
+    if let Err(e) = MotService::init(&image_dir) {
+        error!("Failed to initialize image directory: {}", e);
+        return Err(ServiceError::FileProcessing(
+            "Image directory initialization error".to_string(),
+        ));
+    }
+
+    // Initialize MOT directory
+    info!("Initializing MOT directory at: {:?}", mot_dir);
+    if let Err(e) = MotService::init_mot_dir(&mot_dir) {
+        error!("Failed to initialize MOT directory: {}", e);
+        return Err(ServiceError::FileProcessing(
+            "MOT directory initialization error".to_string(),
+        ));
+    }
+
+    let has_station_image;
+    let station_image = match MotService::load_station_image(&config.default_station_image).await {
+        Ok(img) => {
+            has_station_image = img.is_some();
+            img
+        }
+        Err(e) => {
+            error!("Failed to load default station image: {}", e);
+            has_station_image = false;
+            None
+        }
+    };
 
     // Create shared application state
     let state = web::Data::new(Mutex::new(AppState {
         track: None,
         program: None,
-        output_path,
+        station_image,
     }));
 
     // Create Arc reference for the ticker service
@@ -46,12 +90,22 @@ async fn main() -> io::Result<()> {
     // Configuration for routes
     let config_data = web::Data::new(config);
 
-    // Create default file
+    // Create default files
     {
         let app_state = state.lock().unwrap();
-        if let Err(e) = FileService::update_output_file(&app_state, &config_data) {
+        if let Err(e) = DlsService::update_output_file(&app_state, &config_data) {
             error!("Failed to create initial output file: {}", e);
-            return Err(io::Error::new(io::ErrorKind::Other, "File creation error"));
+            return Err(ServiceError::FileProcessing(
+                "File creation error".to_string(),
+            ));
+        }
+
+        // Initialize MOT images
+        if let Err(e) = MotService::update_mot_output(&app_state, &mot_dir) {
+            error!("Failed to initialize MOT images: {}", e);
+            return Err(ServiceError::FileProcessing(
+                "MOT initialization error".to_string(),
+            ));
         }
     }
 
@@ -62,18 +116,42 @@ async fn main() -> io::Result<()> {
         TickerService::start(state_arc, config_for_ticker).await;
     });
 
+    info!("MOT slideshow using station image: {}", has_station_image);
+
     // Start HTTP server
     let bind_address = format!("0.0.0.0:{}", server_port);
     info!("Starting HTTP server at {}", bind_address);
+    info!(
+        "Using fixed paths: DLS output={}, Images={}, MOT={}",
+        DLS_OUTPUT_FILE, IMAGE_DIR, MOT_OUTPUT_DIR
+    );
 
     HttpServer::new(move || {
         App::new()
             .app_data(state.clone())
             .app_data(config_data.clone())
             .wrap(Auth)
-            .route("/track", web::post().to(handlers::track::post_track))
+            .route(
+                "/track",
+                web::post().to(
+                    |payload: Option<Multipart>,
+                     json: Option<web::Json<Track>>,
+                     state: web::Data<Mutex<AppState>>| {
+                        handlers::track::post_track(payload, json, state)
+                    },
+                ),
+            )
             .route("/track", web::delete().to(handlers::track::delete_track))
-            .route("/program", web::post().to(handlers::program::post_program))
+            .route(
+                "/program",
+                web::post().to(
+                    |payload: Option<Multipart>,
+                     json: Option<web::Json<Program>>,
+                     state: web::Data<Mutex<AppState>>| {
+                        handlers::program::post_program(payload, json, state)
+                    },
+                ),
+            )
             .route(
                 "/program",
                 web::delete().to(handlers::program::delete_program),
@@ -82,4 +160,5 @@ async fn main() -> io::Result<()> {
     .bind(bind_address)?
     .run()
     .await
+    .map_err(|e| ServiceError::Server(format!("HTTP server error: {}", e)))
 }

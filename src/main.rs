@@ -23,45 +23,34 @@ async fn main() -> ServiceResult<()> {
 
     dotenv::dotenv().ok();
 
-    // Load configuration - will panic with error message if required values are missing
-    let config = match Config::from_env() {
-        Ok(cfg) => {
-            info!(
-                "Configuration loaded successfully for station: {}",
-                cfg.station_name
-            );
-            cfg
-        }
-        Err(e) => {
-            error!("Failed to load configuration: {}", e);
-            return Err(ServiceError::Configuration(format!(
-                "Failed to load configuration: {}",
-                e
-            )));
-        }
-    };
+    // Load configuration
+    let config = Config::from_env().map_err(|e| {
+        error!("Failed to load configuration: {}", e);
+        ServiceError::Configuration(format!("Failed to load configuration: {}", e))
+    })?;
 
+    info!(
+        "Configuration loaded successfully for station: {}",
+        config.station_name
+    );
     let server_port = DEFAULT_SERVER_PORT.to_string();
 
     // Create directories for images and MOT output
     let image_dir = PathBuf::from(IMAGE_DIR);
     let mot_dir = PathBuf::from(MOT_OUTPUT_DIR);
+
     info!("Initializing image directory at: {:?}", image_dir);
-    if let Err(e) = MotService::init(&image_dir) {
+    MotService::init(&image_dir).map_err(|e| {
         error!("Failed to initialize image directory: {}", e);
-        return Err(ServiceError::FileProcessing(
-            "Image directory initialization error".to_string(),
-        ));
-    }
+        ServiceError::FileProcessing("Image directory initialization error".into())
+    })?;
 
     // Initialize MOT directory
     info!("Initializing MOT directory at: {:?}", mot_dir);
-    if let Err(e) = MotService::init_mot_dir(&mot_dir) {
+    MotService::init_mot_dir(&mot_dir).map_err(|e| {
         error!("Failed to initialize MOT directory: {}", e);
-        return Err(ServiceError::FileProcessing(
-            "MOT directory initialization error".to_string(),
-        ));
-    }
+        ServiceError::FileProcessing("MOT directory initialization error".into())
+    })?;
 
     let has_station_image;
     let station_image = match MotService::load_station_image(&config.default_station_image).await {
@@ -76,7 +65,6 @@ async fn main() -> ServiceResult<()> {
         }
     };
 
-    // Create shared application state
     let station_name = config.station_name.clone();
     let state = web::Data::new(Mutex::new(AppState {
         track: None,
@@ -88,32 +76,25 @@ async fn main() -> ServiceResult<()> {
         }),
     }));
 
-    // Create Arc reference for the ticker service
     let state_for_ticker = state.clone();
-
-    // Configuration for routes
     let config_data = web::Data::new(config);
 
-    // Create default files
     {
-        let mut app_state = state.lock().unwrap();
-        if let Err(e) = DlsService::update_output_file(&mut app_state) {
-            error!("Failed to create initial output file: {}", e);
-            return Err(ServiceError::FileProcessing(
-                "File creation error".to_string(),
-            ));
-        }
+        let mut mut_guard = state.lock().map_err(|_| {
+            ServiceError::Server("Failed to acquire lock on application state".into())
+        })?;
 
-        // Initialize MOT images
-        if let Err(e) = MotService::update_mot_output(&mut app_state, &mot_dir) {
+        DlsService::update_output_file(&mut mut_guard).map_err(|e| {
+            error!("Failed to create initial output file: {}", e);
+            ServiceError::FileProcessing("File creation error".into())
+        })?;
+
+        MotService::update_mot_output(&mut mut_guard, &mot_dir).map_err(|e| {
             error!("Failed to initialize MOT images: {}", e);
-            return Err(ServiceError::FileProcessing(
-                "MOT initialization error".to_string(),
-            ));
-        }
+            ServiceError::FileProcessing("MOT initialization error".into())
+        })?;
     }
 
-    // Start the ticker service in a background task
     info!("Starting background ticker service");
     let state_arc = Arc::new(state_for_ticker);
     tokio::spawn(async move {
@@ -122,7 +103,6 @@ async fn main() -> ServiceResult<()> {
 
     info!("MOT slideshow using station image: {}", has_station_image);
 
-    // Start HTTP server
     let bind_address = format!("0.0.0.0:{}", server_port);
     info!("Starting HTTP server at {}", bind_address);
     info!(

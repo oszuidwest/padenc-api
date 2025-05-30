@@ -71,10 +71,9 @@ impl DlsService {
         let separator = " - ";
         let display_text = format!("{}{}{}", artist, separator, title);
 
-        // Calculate tag positions
         let artist_start = 0;
         let artist_length = artist.len() as u32;
-        let title_start = artist_length as u32 + separator.len() as u32;
+        let title_start = artist_length + separator.len() as u32;
         let title_length = title.len() as u32;
 
         format!(

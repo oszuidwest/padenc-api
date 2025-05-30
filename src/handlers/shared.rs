@@ -28,7 +28,7 @@ where
     let image_dir = Path::new(IMAGE_DIR);
 
     let (content_info, content_image) = if let Some(mp_payload) = payload {
-        handle_multipart_upload::<T>(mp_payload, Some(&image_dir), field_name).await?
+        handle_multipart_upload::<T>(mp_payload, Some(image_dir), field_name).await?
     } else {
         (None, None)
     };

@@ -18,9 +18,8 @@ pub struct MotService;
 
 impl MotService {
     pub fn init(image_dir: &Path) -> ServiceResult<()> {
-        fs::create_dir_all(image_dir).map_err(|e| {
-            ServiceError::FileProcessing(format!("Failed to create image directory: {}", e))
-        })?;
+        fs::create_dir_all(image_dir)
+            .map_err(|e| ServiceError::FileProcessing(format!("Failed to create image directory: {}", e)))?;
         Ok(())
     }
 
@@ -31,7 +30,7 @@ impl MotService {
     ) -> ServiceResult<(PathBuf, String)> {
         if !Self::is_valid_image_type(content_type) {
             return Err(ServiceError::Validation(
-                "Invalid image format. Supported formats: JPEG, PNG".to_string(),
+                "Invalid image format. Supported formats: JPEG, PNG".into(),
             ));
         }
 
@@ -40,7 +39,7 @@ impl MotService {
             "image/png" => extensions::PNG,
             _ => {
                 return Err(ServiceError::Validation(
-                    "Unsupported image format. Only JPEG and PNG are supported".to_string(),
+                    "Unsupported image format. Only JPEG and PNG are supported".into(),
                 ))
             }
         };
@@ -48,12 +47,10 @@ impl MotService {
         let filename = format!("{}.{}", Uuid::new_v4(), file_extension);
         let file_path = image_dir.join(&filename);
 
-        let mut file = File::create(&file_path).map_err(|e| {
-            ServiceError::FileProcessing(format!("Failed to create image file: {}", e))
-        })?;
-        file.write_all(image_data).map_err(|e| {
-            ServiceError::FileProcessing(format!("Failed to write image data: {}", e))
-        })?;
+        let mut file = File::create(&file_path)
+            .map_err(|e| ServiceError::FileProcessing(format!("Failed to create image file: {}", e)))?;
+        file.write_all(image_data)
+            .map_err(|e| ServiceError::FileProcessing(format!("Failed to write image data: {}", e)))?;
 
         debug!("Stored image at {:?}", file_path);
 
@@ -70,8 +67,9 @@ impl MotService {
 
         while let Ok(Some(mut field)) = payload.try_next().await {
             let content_disposition = field.content_disposition();
-
-            if content_disposition.get_name().unwrap_or("") == "image" {
+            
+            let field_name = content_disposition.get_name().unwrap_or("");
+            if field_name == "image" {
                 content_type = field.content_type().map(|ct| ct.to_string());
 
                 while let Some(chunk) = field.next().await {
@@ -84,7 +82,7 @@ impl MotService {
         }
 
         if image_data.is_empty() || content_type.is_none() {
-            return Err(ServiceError::Validation("Missing image data".to_string()));
+            return Err(ServiceError::Validation("Missing image data".into()));
         }
 
         let content_type_str = content_type.unwrap();
@@ -165,10 +163,9 @@ impl MotService {
         false
     }
 
-    pub fn init_mot_dir(mot_dir: &PathBuf) -> ServiceResult<()> {
-        fs::create_dir_all(mot_dir).map_err(|e| {
-            ServiceError::FileProcessing(format!("Failed to create MOT directory: {}", e))
-        })?;
+    pub fn init_mot_dir(mot_dir: &Path) -> ServiceResult<()> {
+        fs::create_dir_all(mot_dir)
+            .map_err(|e| ServiceError::FileProcessing(format!("Failed to create MOT directory: {}", e)))?;
 
         if let Ok(entries) = fs::read_dir(mot_dir) {
             for entry in entries.filter_map(Result::ok) {
@@ -185,7 +182,7 @@ impl MotService {
         Ok(())
     }
 
-    pub fn update_mot_output(app_state: &mut AppState, mot_dir: &PathBuf) -> ServiceResult<()> {
+    pub fn update_mot_output(app_state: &mut AppState, mot_dir: &Path) -> ServiceResult<()> {
         let now = Utc::now();
 
         // Get the active output type from ContentService
@@ -210,13 +207,8 @@ impl MotService {
             // Copy the active image to the MOT directory
             let mot_file_path = mot_dir.join(&filename);
 
-            if let Err(e) = fs::copy(&path, &mot_file_path) {
-                error!("Failed to update MOT image: {}", e);
-                return Err(ServiceError::FileProcessing(format!(
-                    "Failed to update MOT image: {}",
-                    e
-                )));
-            }
+            fs::copy(&path, &mot_file_path)
+                .map_err(|e| ServiceError::FileProcessing(format!("Failed to update MOT image: {}", e)))?;
 
             debug!("Updated MOT image at {:?}", mot_file_path);
             Ok(())
@@ -239,7 +231,10 @@ impl MotService {
                 .program
                 .as_ref()
                 .and_then(|program| program.image.as_ref()),
-            OutputType::Station => app_state.station.as_ref().and_then(|station| station.image.as_ref()),
+            OutputType::Station => app_state
+                .station
+                .as_ref()
+                .and_then(|station| station.image.as_ref()),
         }
     }
 
@@ -257,15 +252,13 @@ impl MotService {
                 )));
             }
 
-            let mut file = File::open(&path).map_err(|e| {
-                ServiceError::FileProcessing(format!("Failed to open station image: {}", e))
-            })?;
+            let mut file = File::open(&path)
+                .map_err(|e| ServiceError::FileProcessing(format!("Failed to open station image: {}", e)))?;
             let mut buffer = Vec::new();
-            file.read_to_end(&mut buffer).map_err(|e| {
-                ServiceError::FileProcessing(format!("Failed to read station image: {}", e))
-            })?;
+            file.read_to_end(&mut buffer)
+                .map_err(|e| ServiceError::FileProcessing(format!("Failed to read station image: {}", e)))?;
 
-            let content_type = Self::detect_mime_type(&path)?;
+            let content_type = Self::detect_mime_type(&path)?.to_string();
 
             // Copy to image directory with new UUID
             let (new_path, filename) = Self::store_image(&buffer, &content_type, image_dir).await?;
@@ -282,17 +275,17 @@ impl MotService {
         }
     }
 
-    fn detect_mime_type(path: &Path) -> ServiceResult<String> {
+    fn detect_mime_type(path: &Path) -> ServiceResult<&'static str> {
         if let Some(ext) = path.extension() {
             match ext.to_string_lossy().to_lowercase().as_str() {
-                "jpg" | "jpeg" => return Ok("image/jpeg".to_string()),
-                "png" => return Ok("image/png".to_string()),
+                "jpg" | "jpeg" => return Ok("image/jpeg"),
+                "png" => return Ok("image/png"),
                 _ => {}
             }
         }
 
         Err(ServiceError::Validation(
-            "Unsupported image format. Only JPEG and PNG are supported".to_string(),
+            "Unsupported image format. Only JPEG and PNG are supported".into(),
         ))
     }
 }

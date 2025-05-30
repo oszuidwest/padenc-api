@@ -1,6 +1,6 @@
-use super::data::{Track, Program, Station};
+use super::data::{Program, Station, Track};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct AppState {
     pub track: Option<Track>,
     pub program: Option<Program>,

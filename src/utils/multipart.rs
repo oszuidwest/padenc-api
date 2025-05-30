@@ -8,7 +8,6 @@ use std::path::Path;
 
 use crate::constants::form::IMAGE_FIELD;
 use crate::constants::fs::IMAGE_DIR;
-
 use crate::models::data::Image;
 use crate::services::MotService;
 
@@ -19,21 +18,18 @@ pub async fn extract_json<T: DeserializeOwned>(
     let mut data = Vec::new();
     
     while let Some(chunk) = field.next().await {
-        data.extend_from_slice(&chunk.map_err(|e| {
-            error!("Error reading {} data: {:?}", field_name, e);
+        data.extend_from_slice(&chunk.map_err(|_| {
             ErrorBadRequest(format!("Failed to read {}", field_name))
         })?);
     }
     
-    let info_str = String::from_utf8(data).map_err(|e| {
-        error!("Invalid UTF-8 in {}: {:?}", field_name, e);
+    let info_str = String::from_utf8(data).map_err(|_| 
         ErrorBadRequest(format!("Invalid UTF-8 in {}", field_name))
-    })?;
+    )?;
     
-    serde_json::from_str(&info_str).map_err(|e| {
-        error!("Failed to parse {}: {:?}", field_name, e);
+    serde_json::from_str(&info_str).map_err(|_| 
         ErrorBadRequest(format!("Invalid {} format", field_name))
-    })
+    )
 }
 
 pub async fn handle_multipart_upload<T: DeserializeOwned>(
@@ -43,7 +39,6 @@ pub async fn handle_multipart_upload<T: DeserializeOwned>(
 ) -> Result<(Option<T>, Option<Image>), Error> {
     let mut info: Option<T> = None;
     let mut image: Option<Image> = None;
-    
     let mut payload = payload;
     
     while let Ok(Some(mut field)) = payload.try_next().await {
@@ -59,10 +54,9 @@ pub async fn handle_multipart_upload<T: DeserializeOwned>(
             let content_type = field.content_type().map(|ct| ct.to_string());
             
             while let Some(chunk) = field.next().await {
-                let data = chunk.map_err(|e| {
-                    error!("Failed to process image upload: {:?}", e);
+                let data = chunk.map_err(|e| 
                     ErrorBadRequest(format!("Failed to read image data: {:?}", e))
-                })?;
+                )?;
                 image_data.extend_from_slice(&data);
             }
             
@@ -94,8 +88,6 @@ pub fn cleanup_image(image_path: &Option<std::path::PathBuf>) {
         if path.exists() {
             if let Err(e) = std::fs::remove_file(path) {
                 error!("Failed to remove image: {}", e);
-            } else {
-                debug!("Successfully removed image: {:?}", path);
             }
         }
     }

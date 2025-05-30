@@ -30,11 +30,11 @@ impl TickerService {
 
             // Get a lock on the app state and update the output file
             match app_state.lock() {
-                Ok(state) => {
+                Ok(mut state) => {
                     debug!("Ticker: Checking content expiration");
 
                     let now = Utc::now();
-                    let current_output_type = ContentService::get_active_output_type(&state, now);
+                    let current_output_type = ContentService::get_active_output_type(&mut state, now);
 
                     let has_changed = match &previous_output_type {
                         None => true,
@@ -62,11 +62,11 @@ impl TickerService {
                             }
                         }
 
-                        if let Err(e) = DlsService::update_output_file(&state, config.as_ref()) {
+                        if let Err(e) = DlsService::update_output_file(&mut state, config.as_ref()) {
                             error!("Ticker: Failed to update output file: {}", e);
                         }
 
-                        if let Err(e) = MotService::update_mot_output(&state, &mot_dir) {
+                        if let Err(e) = MotService::update_mot_output(&mut state, &mot_dir) {
                             error!("Ticker: Failed to update MOT output: {}", e);
                         }
 
@@ -77,7 +77,7 @@ impl TickerService {
                     // We'll do this on every Nth tick (according to CLEANUP_INTERVAL_TICKS)
                     if now.timestamp() % CLEANUP_INTERVAL_TICKS == 0 {
                         debug!("Ticker: Running image cleanup");
-                        if let Err(e) = MotService::cleanup_expired_images(&state) {
+                        if let Err(e) = MotService::cleanup_expired_images(&mut state) {
                             error!("Ticker: Failed to clean up expired images: {}", e);
                         }
                     }

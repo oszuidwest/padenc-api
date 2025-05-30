@@ -13,14 +13,15 @@ pub enum OutputType {
 pub struct ContentService;
 
 impl ContentService {
-    pub fn get_active_output_type(app_state: &AppState, now: DateTime<Utc>) -> OutputType {
+    pub fn get_active_output_type(app_state: &mut AppState, now: DateTime<Utc>) -> OutputType {
         // Try to use valid track info first
         if let Some(track) = &app_state.track {
             if track.expires_at > now {
                 debug!("Track valid until {}", track.expires_at);
                 return OutputType::Track;
             }
-            debug!("Track expired at {}", track.expires_at);
+            debug!("Track expired at {}, unsetting track data", track.expires_at);
+            app_state.track = None;
         }
 
         // Then try program info
@@ -29,7 +30,8 @@ impl ContentService {
                 debug!("Program valid until {}", program.expires_at);
                 return OutputType::Program;
             }
-            debug!("Program expired at {}", program.expires_at);
+            debug!("Program expired at {}, unsetting program data", program.expires_at);
+            app_state.program = None;
         }
 
         // Fall back to station info

@@ -14,7 +14,7 @@ use crate::services::content_service::OutputType;
 pub struct DlsService;
 
 impl DlsService {
-    pub fn update_output_file(app_state: &AppState, config: &Config) -> ServiceResult<()> {
+    pub fn update_output_file(app_state: &mut AppState, config: &Config) -> ServiceResult<()> {
         let now = Utc::now();
         debug!("Checking content states at {}", now);
 

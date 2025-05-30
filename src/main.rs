@@ -92,8 +92,8 @@ async fn main() -> ServiceResult<()> {
 
     // Create default files
     {
-        let app_state = state.lock().unwrap();
-        if let Err(e) = DlsService::update_output_file(&app_state, &config_data) {
+        let mut app_state = state.lock().unwrap();
+        if let Err(e) = DlsService::update_output_file(&mut app_state, &config_data) {
             error!("Failed to create initial output file: {}", e);
             return Err(ServiceError::FileProcessing(
                 "File creation error".to_string(),
@@ -101,7 +101,7 @@ async fn main() -> ServiceResult<()> {
         }
 
         // Initialize MOT images
-        if let Err(e) = MotService::update_mot_output(&app_state, &mot_dir) {
+        if let Err(e) = MotService::update_mot_output(&mut app_state, &mot_dir) {
             error!("Failed to initialize MOT images: {}", e);
             return Err(ServiceError::FileProcessing(
                 "MOT initialization error".to_string(),

@@ -97,28 +97,27 @@ impl MotService {
         })
     }
 
-    pub fn cleanup_expired_images(app_state: &AppState) -> ServiceResult<()> {
+    pub fn cleanup_expired_images(app_state: &mut AppState) -> ServiceResult<()> {
         let now = Utc::now();
         let image_dir = Path::new(IMAGE_DIR);
         let mut active_images = Vec::new();
 
-        // Collect paths of active images
+        // Call get_active_output_type to auto-unset expired tracks/programs
+        ContentService::get_active_output_type(app_state, now);
+        
+        // Collect paths of active images (now we know they're not expired)
         if let Some(track) = &app_state.track {
-            if track.expires_at > now {
-                if let Some(image) = &track.image {
-                    if let Some(path) = &image.path {
-                        active_images.push(path.clone());
-                    }
+            if let Some(image) = &track.image {
+                if let Some(path) = &image.path {
+                    active_images.push(path.clone());
                 }
             }
         }
 
         if let Some(program) = &app_state.program {
-            if program.expires_at > now {
-                if let Some(image) = &program.image {
-                    if let Some(path) = &image.path {
-                        active_images.push(path.clone());
-                    }
+            if let Some(image) = &program.image {
+                if let Some(path) = &image.path {
+                    active_images.push(path.clone());
                 }
             }
         }
@@ -184,7 +183,7 @@ impl MotService {
         Ok(())
     }
 
-    pub fn update_mot_output(app_state: &AppState, mot_dir: &PathBuf) -> ServiceResult<()> {
+    pub fn update_mot_output(app_state: &mut AppState, mot_dir: &PathBuf) -> ServiceResult<()> {
         let now = Utc::now();
 
         // Get the active output type from ContentService

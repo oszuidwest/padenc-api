@@ -1,222 +1,31 @@
-# ODR Metadata Server
+# PADENC API Server
 
-A simple HTTP server for managing DAB metadata and MOT slideshow images used by ODR PADENC.
+A Rust HTTP server for managing DAB metadata (DLS text and MOT slideshow images) for ODR PADENC.
 
-## Overview
+## What is PADENC API?
 
-This server provides endpoints to:
-- POST new track information (song title, artist) and optional image
-- DELETE existing track information
-- POST program information and optional image
-- DELETE program information
+PADENC API provides a simple HTTP interface for dynamically managing DAB metadata in digital radio broadcasts. It handles:
 
-When no track or program is active (or when their expiry times have passed), the server will output a file containing just the station name and the configured default station image will be used for MOT slideshow (if available).
+- Track information (song titles and artists)
+- Program information (show names)
+- Station information (default fallback)
+- MOT slideshow images for each content type
+- DL Plus tagging for improved text display
 
-## Configuration
+The server automatically formats output for compatibility with [ODR PADENC](https://github.com/Opendigitalradio/ODR-PadEnc) and handles content expiration for seamless transitions between tracks, programs, and fallback station information.
 
-The server uses the following environment variables:
-- `STATION_NAME`: The name of the station to display when no metadata is active (required)
-- `API_KEY`: Secret key used for Bearer token authentication (required)
-- `DEFAULT_STATION_IMAGE`: Path to default station image file to be used when no track or program image is active (optional)
+## Integration with ODR PADENC
 
-You can set these variables in a `.env` file in the project root or pass them to the Docker container.
+This API server generates two key outputs:
 
-## Fixed Paths
+1. **DLS text file** (`/data/dls.txt`) - Contains formatted text with DL Plus tags
+2. **MOT slideshow images** (`/data/mot` directory) - Contains the currently active image
 
-The following paths are fixed within the Docker container:
-- DLS output file: `/data/dls.txt`
-- Temporary image storage: `/tmp/padenc/images` (no need to persist this)
-- MOT directory: `/data/mot`
+To connect ODR PADENC to this API:
 
-When running the container, you should mount a volume to `/data` to persist the DLS output and MOT slideshow files. Temporary images are stored in memory and don't need to be persisted.
+1. Mount the `/data` directory as a volume in both containers
+2. Configure ODR PADENC to read from these locations:
 
-## Authentication
-
-All API endpoints are protected by Bearer token authentication. You must include an `Authorization` header with a valid token in all requests:
-
-```
-Authorization: Bearer your_secret_api_key_here
-```
-
-The token should match the `API_KEY` environment variable value.
-
-## API Endpoints
-
-### POST /track
-
-Used to add new information for a track, with optional image for MOT slideshow.
-
-#### JSON Request
-Use content-type `application/json` for text-only updates:
-
-```json
-{
-    "item": {
-        "title": "Viva la Vida",
-        "artist": "Coldplay"
-    },
-    "expires_at": "2025-05-15T15:00:00Z"
-}
-```
-
-#### Multipart Form Request
-Use content-type `multipart/form-data` to include an image:
-
-- `track_info`: JSON string with track data (same format as above)
-- `image`: Image file (JPEG, PNG)
-
-### DELETE /track
-
-Removes the current track information and its associated image, reverting to displaying the program (if available) or station name.
-
-### POST /program
-
-Used to add program information with optional image for MOT slideshow.
-
-#### JSON Request
-Use content-type `application/json` for text-only updates:
-
-```json
-{
-    "name": "Maartens Weekend Boost",
-    "expires_at": "2025-05-15T15:00:00Z"
-}
-```
-
-#### Multipart Form Request
-Use content-type `multipart/form-data` to include an image:
-
-- `program_info`: JSON string with program data (same format as above)
-- `image`: Image file (JPEG, PNG)
-
-### DELETE /program
-
-Removes the current program information and its associated image, reverting to displaying only the station name if no track is available.
-
-## Output Format
-
-The server generates files compatible with ODR PADENC in the following formats:
-
-### DLS Output Format
-
-#### Track Metadata Format:
-
-```
-##### parameters { #####
-DL_PLUS=1
-DL_PLUS_TAG=1 0 9  # Title tag
-DL_PLUS_TAG=4 12 16  # Artist tag
-##### parameters } #####
-ColdPlay - Test
-```
-
-#### Program Format:
-
-```
-##### parameters { #####
-DL_PLUS=1
-DL_PLUS_TAG=33 0 23  # Program tag
-##### parameters } #####
-Maartens Weekend Boost
-```
-
-#### Station Format:
-
-```
-##### parameters { #####
-DL_PLUS=1
-DL_PLUS_TAG=31 0 8  # Station tag
-##### parameters } #####
-BredaNu
-```
-
-### MOT Output Format
-
-For MOT slideshow images, the server copies the currently active image to the MOT directory for ODR PADENC to process. The image selection follows the same fallback strategy as text:
-
-1. Track image (if track is active)
-2. Program image (if no track image but program is active)
-3. Default station image (if configured and no track or program image is available)
-
-If no images are available, the MOT directory will be empty.
-
-## Building & Running
-
-### Standard Rust Build
-
-```bash
-# Build the project
-cargo build --release
-
-# Run the server
-cargo run --release
-```
-
-### Docker
-
-The server can be run in a Docker container. The port is hardcoded to 8080.
-
-#### Build and run with Docker Compose:
-
-```bash
-# Start the server
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop the server
-docker-compose down
-```
-
-#### Build and run with Docker directly:
-
-```bash
-# Build the Docker image
-docker build -t odr-metadata-server .
-
-# Run the Docker container
-docker run -d \
-  --name odr-metadata-server \
-  -p 8080:8080 \
-  -e STATION_NAME=YourStation \
-  -e API_KEY=your_secret_api_key_here \
-  -e DEFAULT_STATION_IMAGE=/data/default_station.jpg \
-  -v $(pwd)/data:/data \
-  odr-metadata-server
-```
-
-### Accessing the API
-
-Once running, the server can be accessed at:
-- http://localhost:8080/track
-- http://localhost:8080/program
-
-Remember to include the `Authorization: Bearer your_secret_api_key_here` header in all requests.
-
-Example using curl:
-
-#### JSON request:
-```bash
-curl -X POST http://localhost:8080/track \
-  -H 'Authorization: Bearer your_secret_api_key_here' \
-  -H 'Content-Type: application/json' \
-  -d '{"item":{"title":"Viva la Vida","artist":"Coldplay"},"expires_at":"2025-05-15T15:00:00Z"}'
-```
-
-#### Multipart form with image:
-```bash
-curl -X POST http://localhost:8080/track \
-  -H 'Authorization: Bearer your_secret_api_key_here' \
-  -F 'track_info={"item":{"title":"Viva la Vida","artist":"Coldplay"},"expires_at":"2025-05-15T15:00:00Z"}' \
-  -F 'image=@/path/to/album_cover.jpg'
-```
-
-### Using with ODR PADENC
-
-Mount the `/data` directory into your ODR PADENC container or system and configure PADENC to read from both the DLS output file (for text) and the MOT output directory (for images).
-
-Example PADENC configuration:
 ```
 odr-padenc \
   --dls=/data/dls.txt \
@@ -225,9 +34,365 @@ odr-padenc \
   --output=dab/pad
 ```
 
-The application automatically manages image files:
-- Uploaded images are temporarily stored in `/tmp/padenc/images`
-- Active images for the MOT slideshow are copied to `/data/mot`
-- Expired images are automatically cleaned up from the temporary storage
+## Configuration
 
-Note that the paths `/data/dls.txt` and `/data/mot` are fixed in the application. Make sure your Docker volume mapping aligns with these paths.
+### Environment Variables
+
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `STATION_NAME` | Station name displayed when no track/program is active | Yes | - |
+| `API_KEY` | Secret key for Bearer token authentication | Yes | - |
+| `DEFAULT_STATION_IMAGE` | Path to default station image | No | - |
+| `RUST_LOG` | Log level (info, debug, etc.) | No | info |
+
+### Fixed Paths
+
+| Path | Description |
+|------|-------------|
+| `/data/dls.txt` | DLS output file read by ODR PADENC |
+| `/data/mot` | MOT slideshow directory read by ODR PADENC |
+| `/tmp/padenc/images` | Internal storage for images (no persistence needed) |
+
+## API Endpoints
+
+All endpoints require authentication with a Bearer token matching the `API_KEY`.
+
+### POST /track
+
+Sets the currently playing track information and optional image.
+
+#### JSON Request (text only)
+
+```bash
+curl -X POST http://localhost:8080/track \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_secret_api_key_here" \
+  -d '{
+    "item": {
+        "title": "Viva la Vida",
+        "artist": "Coldplay"
+    },
+    "expires_at": "2023-12-31T23:59:59Z"
+  }'
+```
+
+#### Multipart Form Request (with image)
+
+```bash
+curl -X POST http://localhost:8080/track \
+  -H "Authorization: Bearer your_secret_api_key_here" \
+  -F 'track_info={
+    "item": {
+      "title": "Viva la Vida",
+      "artist": "Coldplay"
+    },
+    "expires_at": "2023-12-31T23:59:59Z"
+  }' \
+  -F 'image=@/path/to/album_cover.jpg'
+```
+
+#### Response
+
+```
+Status: 200 OK
+{
+    "status": "success",
+    "message": "Track updated successfully"
+}
+```
+
+### DELETE /track
+
+Removes the current track information and associated image.
+
+```bash
+curl -X DELETE http://localhost:8080/track \
+  -H "Authorization: Bearer your_secret_api_key_here"
+```
+
+#### Response
+
+```
+Status: 200 OK
+{
+    "status": "success",
+    "message": "Track removed successfully"
+}
+```
+
+### POST /program
+
+Sets the current program information and optional image.
+
+#### JSON Request (text only)
+
+```bash
+curl -X POST http://localhost:8080/program \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_secret_api_key_here" \
+  -d '{
+    "name": "Morning Show with DJ Smith",
+    "expires_at": "2023-12-31T12:00:00Z"
+  }'
+```
+
+#### Multipart Form Request (with image)
+
+```bash
+curl -X POST http://localhost:8080/program \
+  -H "Authorization: Bearer your_secret_api_key_here" \
+  -F 'program_info={
+    "name": "Morning Show with DJ Smith",
+    "expires_at": "2023-12-31T12:00:00Z"
+  }' \
+  -F 'image=@/path/to/program_logo.jpg'
+```
+
+#### Response
+
+```
+Status: 200 OK
+{
+    "status": "success",
+    "message": "Program updated successfully"
+}
+```
+
+### DELETE /program
+
+Removes the current program information and associated image.
+
+```bash
+curl -X DELETE http://localhost:8080/program \
+  -H "Authorization: Bearer your_secret_api_key_here"
+```
+
+#### Response
+
+```
+Status: 200 OK
+{
+    "status": "success",
+    "message": "Program removed successfully"
+}
+```
+
+## Output Format
+
+### DLS Text Format
+
+The server generates properly formatted DLS text files with DL Plus tags for optimal display on DAB receivers:
+
+#### Track Format
+
+```
+##### parameters { #####
+DL_PLUS=1
+DL_PLUS_TAG=1 0 9  # Title tag
+DL_PLUS_TAG=4 12 16  # Artist tag
+##### parameters } #####
+Coldplay - Viva la Vida
+```
+
+#### Program Format
+
+```
+##### parameters { #####
+DL_PLUS=1
+DL_PLUS_TAG=33 0 23  # Program tag
+##### parameters } #####
+Morning Show with DJ Smith
+```
+
+#### Station Format (fallback)
+
+```
+##### parameters { #####
+DL_PLUS=1
+DL_PLUS_TAG=31 0 8  # Station tag
+##### parameters } #####
+Radio One
+```
+
+### MOT Slideshow Format
+
+The server automatically manages images in the MOT directory following this priority:
+
+1. Track image (if a track is active)
+2. Program image (if no track but program is active)
+3. Default station image (if configured and no track/program is active)
+
+## Deployment with Docker
+
+The easiest way to deploy PADENC API is to use the prebuilt Docker images:
+
+```bash
+# Pull the latest version
+docker pull ghcr.io/oszuidwest/padenc-api:latest
+
+# Or pull a specific version
+docker pull ghcr.io/oszuidwest/padenc-api:v1.0.0
+```
+
+Run the container:
+
+```bash
+docker run -d \
+  --name padenc-api \
+  -p 8080:8080 \
+  -e STATION_NAME="My Radio Station" \
+  -e API_KEY="your_secret_key_here" \
+  -e DEFAULT_STATION_IMAGE="/data/default_station.jpg" \
+  -v $(pwd)/data:/data \
+  ghcr.io/oszuidwest/padenc-api:latest
+```
+
+### Quick Start with Docker Compose
+
+1. Create a `.env` file based on `.env.example`:
+
+```
+STATION_NAME=My Radio Station
+API_KEY=your_secret_key_here
+DEFAULT_STATION_IMAGE=/data/default_station.jpg
+RUST_LOG=info
+```
+
+2. Create a `data` directory and add your default station image (optional):
+
+```bash
+mkdir -p data
+cp path/to/your/logo.jpg data/default_station.jpg
+```
+
+3. Start the server using Docker Compose:
+
+```bash
+docker-compose up -d
+```
+
+### Complete ODR Stack Example
+
+Here's a complete `docker-compose.yml` example with PADENC API, ODR-PadEnc, and ODR-AudioEnc:
+
+```yaml
+services:
+  padenc-api:
+    image: ghcr.io/oszuidwest/padenc-api:latest
+    container_name: padenc-api
+    ports:
+      - "8080:8080"
+    environment:
+      - STATION_NAME=My Radio Station
+      - DEFAULT_STATION_IMAGE=/data/default_station.jpg
+      - RUST_LOG=info
+      - API_KEY=your_secret_api_key_here
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+
+  odr-padenc:
+    image: ghcr.io/oszuidwest/odr-padenc:latest
+    container_name: odr-padenc
+    depends_on:
+      - padenc-api
+    volumes:
+      - ./data:/data
+      - odr_socket:/tmp/dab
+    environment:
+      - DLS_FILE=/data/dls.txt
+    command: >
+      odr-padenc
+      --dls=/data/dls.txt
+      --dir=/data/mot
+      --output=dab/pad
+      --charset=0
+      --erase
+    restart: unless-stopped
+
+  odr-audioenc:
+    image: ghcr.io/oszuidwest/odr-audioenc-full:latest
+    container_name: odr-audioenc
+    volumes:
+      - odr_socket:/tmp/dab
+    command: >
+      odr-audioenc
+      --vlc-uri http://stream.example.com/mystream
+      -r 48000 -b 96
+      -P dab/pad
+      -e tcp://dabmux:9000
+    restart: unless-stopped
+
+volumes:
+  odr_socket:
+```
+
+## Common Usage Examples
+
+### Set a New Track with Image
+
+```bash
+curl -X POST http://localhost:8080/track \
+  -H "Authorization: Bearer your_secret_api_key_here" \
+  -F 'track_info={
+    "item": {
+      "title": "Bohemian Rhapsody",
+      "artist": "Queen"
+    },
+    "expires_at": "2023-12-31T23:59:59Z"
+  }' \
+  -F 'image=@/path/to/queen_cover.jpg'
+```
+
+### Update Program Information
+
+```bash
+curl -X POST http://localhost:8080/program \
+  -H "Authorization: Bearer your_secret_api_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Evening Jazz",
+    "expires_at": "2023-12-31T23:59:59Z"
+  }'
+```
+
+### Clear Track Information
+
+```bash
+curl -X DELETE http://localhost:8080/track \
+  -H "Authorization: Bearer your_secret_api_key_here"
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **No DLS Text Output**
+   - Check if `/data/dls.txt` exists and is writable
+   - Verify environment variables are correctly set
+   - Check logs for any file permission errors
+
+2. **MOT Images Not Showing**
+   - Verify image format (only JPEG/PNG supported)
+   - Check if `/data/mot` directory exists and is writable
+   - Verify image file size (should be reasonable for DAB transmission)
+
+3. **Authentication Failures**
+   - Confirm `API_KEY` environment variable matches the Bearer token
+   - Check for typos or whitespace in the token
+
+### Logging
+
+Adjust the `RUST_LOG` environment variable for more detailed logs:
+
+```
+RUST_LOG=debug   # For detailed debugging information
+RUST_LOG=info    # For normal operation information
+RUST_LOG=warn    # For warnings only
+```
+
+## Security Considerations
+
+- Always use a strong, random API key
+- Deploy behind a reverse proxy with HTTPS in production
+- Consider IP whitelisting for additional protection

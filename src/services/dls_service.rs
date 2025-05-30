@@ -3,7 +3,6 @@ use log::debug;
 use std::fs;
 use std::io::Write;
 
-use crate::config::Config;
 use crate::constants::fs::DLS_OUTPUT_FILE;
 use crate::errors::{ServiceError, ServiceResult};
 use crate::models::tags::{ARTIST_TAG, PROGRAM_TAG, STATION_TAG, TITLE_TAG};
@@ -14,7 +13,7 @@ use crate::services::content_service::OutputType;
 pub struct DlsService;
 
 impl DlsService {
-    pub fn update_output_file(app_state: &mut AppState, config: &Config) -> ServiceResult<()> {
+    pub fn update_output_file(app_state: &mut AppState) -> ServiceResult<()> {
         let now = Utc::now();
         debug!("Checking content states at {}", now);
 
@@ -28,7 +27,8 @@ impl DlsService {
                     debug!("Writing track info: {} - {}", artist, title);
                     Self::generate_track_content(artist, title)
                 } else {
-                    Self::generate_station_content(&config.station_name)
+                    let station_name = &app_state.station.as_ref().unwrap().name;
+                    Self::generate_station_content(station_name)
                 }
             },
             OutputType::Program => {
@@ -37,12 +37,14 @@ impl DlsService {
                     debug!("Writing program info: {}", program_name);
                     Self::generate_program_content(program_name)
                 } else {
-                    Self::generate_station_content(&config.station_name)
+                    let station_name = &app_state.station.as_ref().unwrap().name;
+                    Self::generate_station_content(station_name)
                 }
             },
             OutputType::Station => {
-                debug!("Writing station info: {}", config.station_name);
-                Self::generate_station_content(&config.station_name)
+                let station_name = &app_state.station.as_ref().unwrap().name;
+                debug!("Writing station info: {}", station_name);
+                Self::generate_station_content(station_name)
             }
         };
         

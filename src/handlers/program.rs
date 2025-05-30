@@ -1,7 +1,7 @@
 use crate::constants::form;
+use crate::handlers::shared::{self};
 use crate::models::{data::Program, AppState};
 use crate::utils::cleanup::cleanup_optional_data_image;
-use crate::handlers::shared::{self};
 use actix_multipart::Multipart;
 use actix_web::{web, Error, HttpResponse};
 use chrono::{DateTime, Utc};
@@ -25,6 +25,7 @@ pub async fn post_program(
         state,
         form::PROGRAM_INFO_FIELD,
         |info: ProgramInfo, image| Program {
+            id: uuid::Uuid::new_v4(),
             name: info.name,
             expires_at: info.expires_at,
             image,

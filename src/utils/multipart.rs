@@ -7,7 +7,8 @@ use serde_json;
 use std::path::Path;
 
 use crate::constants::form::IMAGE_FIELD;
-use crate::errors::ServiceError;
+use crate::constants::fs::IMAGE_DIR;
+
 use crate::models::data::Image;
 use crate::services::MotService;
 
@@ -54,17 +55,29 @@ pub async fn handle_multipart_upload<T: DeserializeOwned>(
         if field_name == info_field_name {
             info = Some(extract_json(info_field_name, &mut field).await?);
         } else if field_name == IMAGE_FIELD {
-            let result = MotService::process_upload(payload, image_dir).await
-                .map_err(|e| {
+            let mut image_data = Vec::new();
+            let content_type = field.content_type().map(|ct| ct.to_string());
+            
+            while let Some(chunk) = field.next().await {
+                let data = chunk.map_err(|e| {
                     error!("Failed to process image upload: {:?}", e);
-                    match e {
-                        ServiceError::Validation(msg) => ErrorBadRequest(msg),
-                        _ => ErrorBadRequest("Failed to process image upload")
-                    }
+                    ErrorBadRequest(format!("Failed to read image data: {:?}", e))
                 })?;
-                
-            image = Some(result);
-            break; // We've consumed the payload
+                image_data.extend_from_slice(&data);
+            }
+            
+            if !image_data.is_empty() && content_type.is_some() {
+                let content_type_str = content_type.unwrap();
+                if let Ok((path, filename)) = MotService::store_image(&image_data, &content_type_str, image_dir.unwrap_or_else(|| Path::new(IMAGE_DIR))).await {
+                    image = Some(Image {
+                        content_type: Some(content_type_str),
+                        path: Some(path),
+                        filename: Some(filename),
+                    });
+                } else {
+                    return Err(ErrorBadRequest("Failed to process image upload"));
+                }
+            }
         } else {
             // Skip other form fields
             while let Some(chunk) = field.next().await {

@@ -5,24 +5,26 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::time::interval;
+use uuid::Uuid;
 
-use crate::config::Config;
 use crate::constants::fs::MOT_OUTPUT_DIR;
 use crate::constants::ticker::{CLEANUP_INTERVAL_TICKS, INTERVAL_MS};
 use crate::models::AppState;
+use crate::models::HasId;
 use crate::services::content_service::OutputType;
 use crate::services::{ContentService, DlsService, MotService};
 
 pub struct TickerService;
 
 impl TickerService {
-    pub async fn start(app_state: Arc<web::Data<Mutex<AppState>>>, config: Arc<Config>) {
+    pub async fn start(app_state: Arc<web::Data<Mutex<AppState>>>) {
         info!(
             "Starting ticker service with {}-millisecond interval",
             INTERVAL_MS
         );
         let mut interval_timer = interval(Duration::from_millis(INTERVAL_MS));
         let mut previous_output_type: Option<OutputType> = None;
+        let mut previous_content_id: Option<Uuid> = None;
         let mot_dir = PathBuf::from(MOT_OUTPUT_DIR);
 
         loop {
@@ -34,11 +36,21 @@ impl TickerService {
                     debug!("Ticker: Checking content expiration");
 
                     let now = Utc::now();
-                    let current_output_type = ContentService::get_active_output_type(&mut state, now);
+                    let current_output_type =
+                        ContentService::get_active_output_type(&mut state, now);
+
+                    let current_content_id = match current_output_type {
+                        OutputType::Track => state.track.as_ref().and_then(|t| t.get_id()),
+                        OutputType::Program => state.program.as_ref().and_then(|p| p.get_id()),
+                        OutputType::Station => state.station.as_ref().and_then(|s| s.get_id()),
+                    };
 
                     let has_changed = match &previous_output_type {
                         None => true,
-                        Some(prev) => prev != &current_output_type,
+                        Some(prev) => {
+                            prev != &current_output_type
+                                || previous_content_id != current_content_id
+                        }
                     };
 
                     if has_changed {
@@ -47,22 +59,29 @@ impl TickerService {
                             OutputType::Track => {
                                 if let Some(track) = &state.track {
                                     info!(
-                                        "New content: Track \"{}\" by \"{}\"",
-                                        track.item.title, track.item.artist
+                                        "New content: Track \"{}\" by \"{}\" (ID: {:?})",
+                                        track.item.title,
+                                        track.item.artist,
+                                        track.get_id()
                                     );
                                 }
                             }
                             OutputType::Program => {
                                 if let Some(program) = &state.program {
-                                    info!("New content: Program \"{}\"", program.name);
+                                    info!(
+                                        "New content: Program \"{}\" (ID: {:?})",
+                                        program.name,
+                                        program.get_id()
+                                    );
                                 }
                             }
                             OutputType::Station => {
-                                info!("New content: Station \"{}\"", config.station_name);
+                                let station_name = &state.station.as_ref().unwrap().name;
+                                info!("New content: Station \"{}\"", station_name);
                             }
                         }
 
-                        if let Err(e) = DlsService::update_output_file(&mut state, config.as_ref()) {
+                        if let Err(e) = DlsService::update_output_file(&mut state) {
                             error!("Ticker: Failed to update output file: {}", e);
                         }
 
@@ -71,6 +90,7 @@ impl TickerService {
                         }
 
                         previous_output_type = Some(current_output_type);
+                        previous_content_id = current_content_id;
                     }
 
                     // Run cleanup for expired images periodically

@@ -31,6 +31,7 @@ pub async fn post_track(
         state,
         form::TRACK_INFO_FIELD,
         |info: TrackInfo, image| Track {
+            id: uuid::Uuid::new_v4(),
             item: crate::models::data::Item {
                 title: info.item.title,
                 artist: info.item.artist,

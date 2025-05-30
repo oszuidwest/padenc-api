@@ -122,9 +122,11 @@ impl MotService {
             }
         }
 
-        if let Some(station_image) = &app_state.station_image {
-            if let Some(path) = &station_image.path {
-                active_images.push(path.clone());
+        if let Some(station) = &app_state.station {
+            if let Some(image) = &station.image {
+                if let Some(path) = &image.path {
+                    active_images.push(path.clone());
+                }
             }
         }
 
@@ -237,7 +239,7 @@ impl MotService {
                 .program
                 .as_ref()
                 .and_then(|program| program.image.as_ref()),
-            OutputType::Station => app_state.station_image.as_ref(),
+            OutputType::Station => app_state.station.as_ref().and_then(|station| station.image.as_ref()),
         }
     }
 

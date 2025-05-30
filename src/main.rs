@@ -12,7 +12,7 @@ use config::Config;
 use constants::api::DEFAULT_SERVER_PORT;
 use constants::fs::{DLS_OUTPUT_FILE, IMAGE_DIR, MOT_OUTPUT_DIR};
 use errors::{ServiceError, ServiceResult};
-use models::data::{Program, Track};
+use models::data::{Program, Station, Track};
 use models::AppState;
 use services::{DlsService, MotService, TickerService};
 
@@ -77,15 +77,19 @@ async fn main() -> ServiceResult<()> {
     };
 
     // Create shared application state
+    let station_name = config.station_name.clone();
     let state = web::Data::new(Mutex::new(AppState {
         track: None,
         program: None,
-        station_image,
+        station: Some(Station {
+            id: uuid::Uuid::new_v4(),
+            name: station_name,
+            image: station_image,
+        }),
     }));
 
     // Create Arc reference for the ticker service
     let state_for_ticker = state.clone();
-    let config_for_ticker = Arc::new(config.clone());
 
     // Configuration for routes
     let config_data = web::Data::new(config);
@@ -93,7 +97,7 @@ async fn main() -> ServiceResult<()> {
     // Create default files
     {
         let mut app_state = state.lock().unwrap();
-        if let Err(e) = DlsService::update_output_file(&mut app_state, &config_data) {
+        if let Err(e) = DlsService::update_output_file(&mut app_state) {
             error!("Failed to create initial output file: {}", e);
             return Err(ServiceError::FileProcessing(
                 "File creation error".to_string(),
@@ -113,7 +117,7 @@ async fn main() -> ServiceResult<()> {
     info!("Starting background ticker service");
     let state_arc = Arc::new(state_for_ticker);
     tokio::spawn(async move {
-        TickerService::start(state_arc, config_for_ticker).await;
+        TickerService::start(state_arc).await;
     });
 
     info!("MOT slideshow using station image: {}", has_station_image);

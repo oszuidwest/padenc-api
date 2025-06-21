@@ -8,7 +8,8 @@ use crate::models::traits::HasId;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Item {
     pub title: String,
-    pub artist: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artist: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

@@ -22,9 +22,12 @@ impl DlsService {
         let content = match output_type {
             OutputType::Track => {
                 if let Some(track) = &app_state.track {
-                    let artist = &track.item.artist;
                     let title = &track.item.title;
-                    debug!("Writing track info: {} - {}", artist, title);
+                    let artist = track.item.artist.as_deref().unwrap_or("");
+                    debug!("Writing track info: {} - {}", 
+                        if artist.is_empty() { "(no artist)" } else { artist }, 
+                        title
+                    );
                     Self::generate_track_content(artist, title)
                 } else {
                     let station_name = &app_state.station.as_ref().unwrap().name;
@@ -68,6 +71,20 @@ impl DlsService {
     }
 
     pub fn generate_track_content(artist: &str, title: &str) -> String {
+        // Handle empty artist case
+        if artist.is_empty() {
+            return format!(
+                "##### parameters {{ #####\n\
+                 DL_PLUS=1\n\
+                 DL_PLUS_TAG={} 0 {}\n\
+                 ##### parameters }} #####\n\
+                 {}",
+                TITLE_TAG,
+                title.len(),
+                title
+            );
+        }
+
         let separator = " - ";
         let display_text = format!("{}{}{}", artist, separator, title);
 

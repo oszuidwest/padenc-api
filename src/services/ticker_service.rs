@@ -58,10 +58,11 @@ impl TickerService {
                         match current_output_type {
                             OutputType::Track => {
                                 if let Some(track) = &state.track {
+                                    let artist_display = track.item.artist.as_deref().unwrap_or("(no artist)");
                                     info!(
                                         "New content: Track \"{}\" by \"{}\" (ID: {:?})",
                                         track.item.title,
-                                        track.item.artist,
+                                        artist_display,
                                         track.get_id()
                                     );
                                 }

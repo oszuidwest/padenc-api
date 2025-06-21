@@ -17,7 +17,7 @@ pub struct TrackInfo {
 #[derive(Debug, serde::Deserialize)]
 pub struct TrackItem {
     pub title: String,
-    pub artist: String,
+    pub artist: Option<String>,
 }
 
 pub async fn post_track(

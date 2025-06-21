@@ -16,22 +16,34 @@ impl ContentService {
     pub fn get_active_output_type(app_state: &mut AppState, now: DateTime<Utc>) -> OutputType {
         // Try to use valid track info first
         if let Some(track) = &app_state.track {
-            if track.expires_at > now {
-                debug!("Track valid until {}", track.expires_at);
+            // If expires_at is None, the track never expires
+            if let Some(expires) = track.expires_at {
+                if expires > now {
+                    debug!("Track valid until {:?}", expires);
+                    return OutputType::Track;
+                }
+                debug!("Track expired at {:?}, unsetting track data", expires);
+                app_state.track = None;
+            } else {
+                debug!("Track has no expiration date, using track info");
                 return OutputType::Track;
             }
-            debug!("Track expired at {}, unsetting track data", track.expires_at);
-            app_state.track = None;
         }
 
         // Then try program info
         if let Some(program) = &app_state.program {
-            if program.expires_at > now {
-                debug!("Program valid until {}", program.expires_at);
+            // If expires_at is None, the program never expires
+            if let Some(expires) = program.expires_at {
+                if expires > now {
+                    debug!("Program valid until {:?}", expires);
+                    return OutputType::Program;
+                }
+                debug!("Program expired at {:?}, unsetting program data", expires);
+                app_state.program = None;
+            } else {
+                debug!("Program has no expiration date, using program info");
                 return OutputType::Program;
             }
-            debug!("Program expired at {}, unsetting program data", program.expires_at);
-            app_state.program = None;
         }
 
         // Fall back to station info

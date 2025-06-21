@@ -11,7 +11,7 @@ use std::sync::Mutex;
 #[derive(Debug, serde::Deserialize)]
 pub struct ProgramInfo {
     pub name: String,
-    pub expires_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
 }
 
 pub async fn post_program(

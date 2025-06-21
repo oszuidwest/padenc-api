@@ -26,7 +26,8 @@ pub struct Track {
     #[serde(default = "Uuid::new_v4", skip_deserializing)]
     pub id: Uuid,
     pub item: Item,
-    pub expires_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image: Option<Image>,
 }
@@ -36,7 +37,8 @@ pub struct Program {
     #[serde(default = "Uuid::new_v4", skip_deserializing)]
     pub id: Uuid,
     pub name: String,
-    pub expires_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image: Option<Image>,
 }

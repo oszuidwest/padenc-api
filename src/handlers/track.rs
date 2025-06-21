@@ -11,7 +11,7 @@ use std::sync::Mutex;
 #[derive(Debug, serde::Deserialize)]
 pub struct TrackInfo {
     pub item: TrackItem,
-    pub expires_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, serde::Deserialize)]

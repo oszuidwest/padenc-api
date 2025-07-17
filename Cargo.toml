@@ -1,5 +1,5 @@
 [package]
-name = "odr_metadata_server"
+name = "padenc_api"
 version = "0.1.0"
 edition = "2021"
 

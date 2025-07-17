@@ -6,7 +6,7 @@ COPY Cargo.toml Cargo.lock ./
 RUN mkdir -p src && \
     echo "fn main() {println!(\"Dummy build\");}" > src/main.rs && \
     cargo build --release && \
-    rm -rf src target/release/deps/odr_metadata_server* target/release/odr_metadata_server*
+    rm -rf src target/release/deps/padenc_api* target/release/padenc_api*
 
 COPY . .
 RUN cargo build --release
@@ -19,9 +19,9 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates libssl-dev && \
     rm -rf /var/lib/apt/lists/*
 
-COPY --from=build /app/target/release/odr_metadata_server /app/
+COPY --from=build /app/target/release/padenc_api /app/
 RUN mkdir -p /data
 
 EXPOSE 8080
 
-CMD ["/app/odr_metadata_server"]
+CMD ["/app/padenc_api"]

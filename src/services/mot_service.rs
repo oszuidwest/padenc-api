@@ -182,15 +182,30 @@ impl MotService {
         Ok(())
     }
 
+    fn get_active_image_with_fallback<'a>(app_state: &'a AppState, output_type: &OutputType) -> Option<&'a Image> {
+        match output_type {
+            OutputType::Track => {
+                Self::get_active_image(app_state, &OutputType::Track)
+                    .or_else(|| Self::get_active_image(app_state, &OutputType::Program))
+                    .or_else(|| Self::get_active_image(app_state, &OutputType::Station))
+            }
+            OutputType::Program => {
+                Self::get_active_image(app_state, &OutputType::Program)
+                    .or_else(|| Self::get_active_image(app_state, &OutputType::Station))
+            }
+            OutputType::Station => Self::get_active_image(app_state, &OutputType::Station),
+        }
+    }
+
     pub fn update_mot_output(app_state: &mut AppState, mot_dir: &Path) -> ServiceResult<()> {
         let now = Utc::now();
 
         // Get the active output type from ContentService
         let output_type = ContentService::get_active_output_type(app_state, now);
 
-        // Get the active image based on the output type
+        // Get the active image based on the output type, with fallback
         let image_path =
-            Self::get_active_image(app_state, &output_type).and_then(|img| img.path.clone());
+            Self::get_active_image_with_fallback(app_state, &output_type).and_then(|img| img.path.clone());
 
         // Clean current MOT directory first
         Self::init_mot_dir(mot_dir)?;

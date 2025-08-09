@@ -77,6 +77,7 @@ impl DlsService {
                 "##### parameters {{ #####\n\
                  DL_PLUS=1\n\
                  DL_PLUS_TAG={} 0 {}\n\
+                 DL_PLUS_ITEM_RUNNING=1\n\
                  ##### parameters }} #####\n\
                  {}",
                 TITLE_TAG,
@@ -98,6 +99,7 @@ impl DlsService {
              DL_PLUS=1\n\
              DL_PLUS_TAG={} {} {}\n\
              DL_PLUS_TAG={} {} {}\n\
+             DL_PLUS_ITEM_RUNNING=1\n\
              ##### parameters }} #####\n\
              {}",
             ARTIST_TAG,
@@ -115,6 +117,7 @@ impl DlsService {
             "##### parameters {{ #####\n\
              DL_PLUS=1\n\
              DL_PLUS_TAG={} 0 {}\n\
+             DL_PLUS_ITEM_RUNNING=0\n\
              ##### parameters }} #####\n\
              {}",
             PROGRAM_TAG,
@@ -128,6 +131,7 @@ impl DlsService {
             "##### parameters {{ #####\n\
              DL_PLUS=1\n\
              DL_PLUS_TAG={} 0 {}\n\
+             DL_PLUS_ITEM_RUNNING=0\n\
              ##### parameters }} #####\n\
              {}",
             STATION_TAG,

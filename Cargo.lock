@@ -1142,7 +1142,6 @@ dependencies = [
  "futures",
  "futures-core",
  "log",
- "mime",
  "serde",
  "serde_json",
  "thiserror",

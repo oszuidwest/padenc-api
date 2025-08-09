@@ -74,6 +74,7 @@ async fn main() -> ServiceResult<()> {
             name: station_name,
             image: station_image,
         }),
+        dl_plus_item_toggle: false,
     }));
 
     let state_for_ticker = state.clone();

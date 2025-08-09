@@ -18,42 +18,45 @@ impl DlsService {
         debug!("Checking content states at {}", now);
 
         let output_type = ContentService::get_active_output_type(app_state, now);
-        
+
+        app_state.dl_plus_item_toggle = !app_state.dl_plus_item_toggle;
+        let toggle_value = app_state.dl_plus_item_toggle as u8;
+
         let content = match output_type {
             OutputType::Track => {
                 if let Some(track) = &app_state.track {
                     let title = &track.item.title;
                     let artist = track.item.artist.as_deref().unwrap_or("");
-                    debug!("Writing track info: {} - {}", 
-                        if artist.is_empty() { "(no artist)" } else { artist }, 
+                    debug!("Writing track info: {} - {}",
+                        if artist.is_empty() { "(no artist)" } else { artist },
                         title
                     );
-                    Self::generate_track_content(artist, title)
+                    Self::generate_track_content(artist, title, toggle_value)
                 } else {
                     let station_name = &app_state.station.as_ref().unwrap().name;
-                    Self::generate_station_content(station_name)
+                    Self::generate_station_content(station_name, toggle_value)
                 }
             },
             OutputType::Program => {
                 if let Some(program) = &app_state.program {
                     let program_name = &program.name;
                     debug!("Writing program info: {}", program_name);
-                    Self::generate_program_content(program_name)
+                    Self::generate_program_content(program_name, toggle_value)
                 } else {
                     let station_name = &app_state.station.as_ref().unwrap().name;
-                    Self::generate_station_content(station_name)
+                    Self::generate_station_content(station_name, toggle_value)
                 }
             },
             OutputType::Station => {
                 let station_name = &app_state.station.as_ref().unwrap().name;
                 debug!("Writing station info: {}", station_name);
-                Self::generate_station_content(station_name)
+                Self::generate_station_content(station_name, toggle_value)
             }
         };
-        
+
         Self::write_content_to_file(&content)
     }
-    
+
     fn write_content_to_file(content: &str) -> ServiceResult<()> {
         let mut file = fs::File::create(DLS_OUTPUT_FILE).map_err(|e| {
             ServiceError::FileProcessing(format!("Failed to create output file: {}", e))
@@ -70,18 +73,19 @@ impl DlsService {
         Ok(())
     }
 
-    pub fn generate_track_content(artist: &str, title: &str) -> String {
-        // Handle empty artist case
+    pub fn generate_track_content(artist: &str, title: &str, toggle_value: u8) -> String {
         if artist.is_empty() {
             return format!(
                 "##### parameters {{ #####\n\
                  DL_PLUS=1\n\
                  DL_PLUS_TAG={} 0 {}\n\
                  DL_PLUS_ITEM_RUNNING=1\n\
+                 DL_PLUS_ITEM_TOGGLE={}\n\
                  ##### parameters }} #####\n\
                  {}",
                 TITLE_TAG,
                 title.len(),
+                toggle_value,
                 title
             );
         }
@@ -100,6 +104,7 @@ impl DlsService {
              DL_PLUS_TAG={} {} {}\n\
              DL_PLUS_TAG={} {} {}\n\
              DL_PLUS_ITEM_RUNNING=1\n\
+             DL_PLUS_ITEM_TOGGLE={}\n\
              ##### parameters }} #####\n\
              {}",
             ARTIST_TAG,
@@ -108,34 +113,39 @@ impl DlsService {
             TITLE_TAG,
             title_start,
             title_length,
+            toggle_value,
             display_text
         )
     }
 
-    pub fn generate_program_content(program_name: &str) -> String {
+    pub fn generate_program_content(program_name: &str, toggle_value: u8) -> String {
         format!(
             "##### parameters {{ #####\n\
              DL_PLUS=1\n\
              DL_PLUS_TAG={} 0 {}\n\
              DL_PLUS_ITEM_RUNNING=0\n\
+             DL_PLUS_ITEM_TOGGLE={}\n\
              ##### parameters }} #####\n\
              {}",
             PROGRAM_TAG,
             program_name.len(),
+            toggle_value,
             program_name
         )
     }
 
-    pub fn generate_station_content(station_name: &str) -> String {
+    pub fn generate_station_content(station_name: &str, toggle_value: u8) -> String {
         format!(
             "##### parameters {{ #####\n\
              DL_PLUS=1\n\
              DL_PLUS_TAG={} 0 {}\n\
              DL_PLUS_ITEM_RUNNING=0\n\
+             DL_PLUS_ITEM_TOGGLE={}\n\
              ##### parameters }} #####\n\
              {}",
             STATION_TAG,
             station_name.len(),
+            toggle_value,
             station_name
         )
     }

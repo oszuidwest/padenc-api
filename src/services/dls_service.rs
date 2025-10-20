@@ -84,7 +84,7 @@ impl DlsService {
                  ##### parameters }} #####\n\
                  {}",
                 TITLE_TAG,
-                title.len(),
+                title.chars().count(),
                 toggle_value,
                 title
             );
@@ -94,9 +94,9 @@ impl DlsService {
         let display_text = format!("{}{}{}", artist, separator, title);
 
         let artist_start = 0;
-        let artist_length = artist.len() as u32;
-        let title_start = artist_length + separator.len() as u32;
-        let title_length = title.len() as u32;
+        let artist_length = artist.chars().count() as u32;
+        let title_start = artist_length + separator.chars().count() as u32;
+        let title_length = title.chars().count() as u32;
 
         format!(
             "##### parameters {{ #####\n\
@@ -128,7 +128,7 @@ impl DlsService {
              ##### parameters }} #####\n\
              {}",
             PROGRAM_TAG,
-            program_name.len(),
+            program_name.chars().count(),
             toggle_value,
             program_name
         )
@@ -144,7 +144,7 @@ impl DlsService {
              ##### parameters }} #####\n\
              {}",
             STATION_TAG,
-            station_name.len(),
+            station_name.chars().count(),
             toggle_value,
             station_name
         )

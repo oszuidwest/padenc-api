@@ -24,9 +24,11 @@ impl TickerService {
         let mut interval_timer = interval(Duration::from_millis(INTERVAL_MS));
         let mut previous_output_type: Option<OutputType> = None;
         let mut previous_content_id: Option<Uuid> = None;
+        let mut tick_count: u64 = 0;
 
         loop {
             interval_timer.tick().await;
+            tick_count = tick_count.wrapping_add(1);
 
             // Get a lock on the app state and update the output file
             match app_state.lock() {
@@ -92,10 +94,8 @@ impl TickerService {
                         previous_content_id = current_content_id;
                     }
 
-                    // Run cleanup for expired images periodically
-                    // We'll do this on every Nth tick (according to CLEANUP_INTERVAL_TICKS)
-                    if now.timestamp() % CLEANUP_INTERVAL_TICKS == 0 {
-                        debug!("Ticker: Running image cleanup");
+                    if tick_count % (CLEANUP_INTERVAL_TICKS as u64) == 0 {
+                        debug!("Ticker: Running image cleanup (tick {})", tick_count);
                         if let Err(e) = MotService::cleanup_expired_images(&image_dir, &mut state) {
                             error!("Ticker: Failed to clean up expired images: {}", e);
                         }

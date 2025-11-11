@@ -24,11 +24,13 @@ pub async fn post_track(
     payload: Option<Multipart>,
     json: Option<web::Json<Track>>,
     state: web::Data<Mutex<AppState>>,
+    config: web::Data<crate::config::Config>,
 ) -> Result<HttpResponse, Error> {
     let result = shared::process_content_update(
         payload,
         json,
         state,
+        config,
         form::TRACK_INFO_FIELD,
         |info: TrackInfo, image| Track {
             id: uuid::Uuid::new_v4(),

@@ -1,13 +1,11 @@
-use actix_multipart::Multipart;
 use chrono::Utc;
-use futures::{StreamExt, TryStreamExt};
 use log::{debug, error, info};
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-use crate::constants::fs::{extensions, IMAGE_DIR, SUPPORTED_MIME_TYPES};
+use crate::constants::mime::{extensions, SUPPORTED_MIME_TYPES};
 use crate::errors::{ServiceError, ServiceResult};
 use crate::models::data::Image;
 use crate::models::AppState;
@@ -24,9 +22,9 @@ impl MotService {
     }
 
     pub async fn store_image(
-        image_data: &[u8],
-        content_type: &str,
         image_dir: &Path,
+        content_type: &str,
+        image_data: &[u8],
     ) -> ServiceResult<(PathBuf, String)> {
         if !Self::is_valid_image_type(content_type) {
             return Err(ServiceError::Validation(
@@ -57,47 +55,8 @@ impl MotService {
         Ok((file_path, filename))
     }
 
-    pub async fn process_upload(
-        mut payload: Multipart,
-        image_dir_path: Option<&Path>,
-    ) -> ServiceResult<Image> {
-        let image_dir = image_dir_path.unwrap_or_else(|| Path::new(IMAGE_DIR));
-        let mut image_data = Vec::new();
-        let mut content_type = None;
-
-        while let Ok(Some(mut field)) = payload.try_next().await {
-            let content_disposition = field.content_disposition();
-            
-            let field_name = content_disposition.get_name().unwrap_or("");
-            if field_name == "image" {
-                content_type = field.content_type().map(|ct| ct.to_string());
-
-                while let Some(chunk) = field.next().await {
-                    let data = chunk.map_err(|e| {
-                        ServiceError::FileProcessing(format!("Upload error: {:?}", e))
-                    })?;
-                    image_data.extend_from_slice(&data);
-                }
-            }
-        }
-
-        if image_data.is_empty() || content_type.is_none() {
-            return Err(ServiceError::Validation("Missing image data".into()));
-        }
-
-        let content_type_str = content_type.unwrap();
-        let (path, filename) = Self::store_image(&image_data, &content_type_str, image_dir).await?;
-
-        Ok(Image {
-            content_type: Some(content_type_str),
-            path: Some(path),
-            filename: Some(filename),
-        })
-    }
-
-    pub fn cleanup_expired_images(app_state: &mut AppState) -> ServiceResult<()> {
+    pub fn cleanup_expired_images(image_dir: &Path, app_state: &mut AppState) -> ServiceResult<()> {
         let now = Utc::now();
-        let image_dir = Path::new(IMAGE_DIR);
         let mut active_images = Vec::new();
 
         // Call get_active_output_type to auto-unset expired tracks/programs
@@ -197,7 +156,7 @@ impl MotService {
         }
     }
 
-    pub fn update_mot_output(app_state: &mut AppState, mot_dir: &Path) -> ServiceResult<()> {
+    pub fn update_mot_output(mot_dir: &Path, app_state: &mut AppState) -> ServiceResult<()> {
         let now = Utc::now();
 
         // Get the active output type from ContentService
@@ -254,9 +213,9 @@ impl MotService {
     }
 
     pub async fn load_station_image(
+        image_dir: &Path,
         default_station_image: &Option<String>,
     ) -> ServiceResult<Option<Image>> {
-        let image_dir = Path::new(IMAGE_DIR);
         if let Some(image_path) = default_station_image {
             let path = PathBuf::from(image_path);
 
@@ -276,7 +235,7 @@ impl MotService {
             let content_type = Self::detect_mime_type(&path)?.to_string();
 
             // Copy to image directory with new UUID
-            let (new_path, filename) = Self::store_image(&buffer, &content_type, image_dir).await?;
+            let (new_path, filename) = Self::store_image(image_dir, &content_type, &buffer).await?;
 
             info!("Loaded default station image: {}", filename);
 

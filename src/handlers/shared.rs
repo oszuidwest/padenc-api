@@ -4,7 +4,6 @@ use serde::de::DeserializeOwned;
 use std::fmt::Debug;
 use std::sync::Mutex;
 
-use crate::constants::fs::IMAGE_DIR;
 use crate::errors::ServiceError;
 use crate::models::data::Image;
 use crate::models::AppState;
@@ -16,6 +15,7 @@ pub async fn process_content_update<T, D>(
     payload: Option<Multipart>,
     json: Option<web::Json<D>>,
     state: web::Data<Mutex<AppState>>,
+    config: web::Data<crate::config::Config>,
     field_name: &str,
     build_data_fn: impl FnOnce(T, Option<Image>) -> D,
     update_state_fn: impl FnOnce(&mut AppState, D),
@@ -25,10 +25,10 @@ where
     T: DeserializeOwned + Debug,
     D: Clone + Debug + HasImage,
 {
-    let image_dir = Path::new(IMAGE_DIR);
+    let image_dir = Path::new(&config.image_dir);
 
     let (content_info, content_image) = if let Some(mp_payload) = payload {
-        handle_multipart_upload::<T>(mp_payload, Some(image_dir), field_name).await?
+        handle_multipart_upload::<T>(mp_payload, image_dir, field_name).await?
     } else {
         (None, None)
     };

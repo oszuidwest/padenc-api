@@ -2,8 +2,8 @@ use chrono::Utc;
 use log::debug;
 use std::fs;
 use std::io::Write;
+use std::path::Path;
 
-use crate::constants::fs::DLS_OUTPUT_FILE;
 use crate::errors::{ServiceError, ServiceResult};
 use crate::models::tags::{ARTIST_TAG, PROGRAM_TAG, STATION_TAG, TITLE_TAG};
 use crate::models::AppState;
@@ -13,7 +13,7 @@ use crate::services::content_service::OutputType;
 pub struct DlsService;
 
 impl DlsService {
-    pub fn update_output_file(app_state: &mut AppState) -> ServiceResult<()> {
+    pub fn update_output_file(dls_path: &Path, app_state: &mut AppState) -> ServiceResult<()> {
         let now = Utc::now();
         debug!("Checking content states at {}", now);
 
@@ -54,20 +54,20 @@ impl DlsService {
             }
         };
 
-        Self::write_content_to_file(&content)
+        Self::write_content_to_file(dls_path, &content)
     }
 
-    fn write_content_to_file(content: &str) -> ServiceResult<()> {
-        let mut file = fs::File::create(DLS_OUTPUT_FILE).map_err(|e| {
+    fn write_content_to_file(dls_path: &Path, content: &str) -> ServiceResult<()> {
+        let mut file = fs::File::create(dls_path).map_err(|e| {
             ServiceError::FileProcessing(format!("Failed to create output file: {}", e))
         })?;
         file.write_all(content.as_bytes()).map_err(|e| {
             ServiceError::FileProcessing(format!("Failed to write to output file: {}", e))
         })?;
         debug!(
-            "Successfully wrote {} bytes to {}",
+            "Successfully wrote {} bytes to {:?}",
             content.len(),
-            DLS_OUTPUT_FILE
+            dls_path
         );
 
         Ok(())

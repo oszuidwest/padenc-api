@@ -7,7 +7,6 @@ use std::time::Duration;
 use tokio::time::interval;
 use uuid::Uuid;
 
-use crate::constants::fs::MOT_OUTPUT_DIR;
 use crate::constants::ticker::{CLEANUP_INTERVAL_TICKS, INTERVAL_MS};
 use crate::models::AppState;
 use crate::models::HasId;
@@ -17,7 +16,7 @@ use crate::services::{ContentService, DlsService, MotService};
 pub struct TickerService;
 
 impl TickerService {
-    pub async fn start(app_state: Arc<web::Data<Mutex<AppState>>>) {
+    pub async fn start(app_state: Arc<web::Data<Mutex<AppState>>>, mot_dir: PathBuf, dls_file: PathBuf, image_dir: PathBuf) {
         info!(
             "Starting ticker service with {}-millisecond interval",
             INTERVAL_MS
@@ -25,7 +24,6 @@ impl TickerService {
         let mut interval_timer = interval(Duration::from_millis(INTERVAL_MS));
         let mut previous_output_type: Option<OutputType> = None;
         let mut previous_content_id: Option<Uuid> = None;
-        let mot_dir = PathBuf::from(MOT_OUTPUT_DIR);
 
         loop {
             interval_timer.tick().await;
@@ -82,11 +80,11 @@ impl TickerService {
                             }
                         }
 
-                        if let Err(e) = DlsService::update_output_file(&mut state) {
+                        if let Err(e) = DlsService::update_output_file(&dls_file, &mut state) {
                             error!("Ticker: Failed to update output file: {}", e);
                         }
 
-                        if let Err(e) = MotService::update_mot_output(&mut state, &mot_dir) {
+                        if let Err(e) = MotService::update_mot_output(&mot_dir, &mut state) {
                             error!("Ticker: Failed to update MOT output: {}", e);
                         }
 
@@ -98,7 +96,7 @@ impl TickerService {
                     // We'll do this on every Nth tick (according to CLEANUP_INTERVAL_TICKS)
                     if now.timestamp() % CLEANUP_INTERVAL_TICKS == 0 {
                         debug!("Ticker: Running image cleanup");
-                        if let Err(e) = MotService::cleanup_expired_images(&mut state) {
+                        if let Err(e) = MotService::cleanup_expired_images(&image_dir, &mut state) {
                             error!("Ticker: Failed to clean up expired images: {}", e);
                         }
                     }

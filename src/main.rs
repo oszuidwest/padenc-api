@@ -10,7 +10,6 @@ use std::sync::{Arc, Mutex};
 
 use config::Config;
 use constants::api::DEFAULT_SERVER_PORT;
-use constants::fs::{DLS_OUTPUT_FILE, IMAGE_DIR, MOT_OUTPUT_DIR};
 use errors::{ServiceError, ServiceResult};
 use models::data::{Program, Station, Track};
 use models::AppState;
@@ -36,8 +35,9 @@ async fn main() -> ServiceResult<()> {
     let server_port = DEFAULT_SERVER_PORT.to_string();
 
     // Create directories for images and MOT output
-    let image_dir = PathBuf::from(IMAGE_DIR);
-    let mot_dir = PathBuf::from(MOT_OUTPUT_DIR);
+    let dls_path = PathBuf::from(config.dls_file.clone());
+    let image_dir = PathBuf::from(config.image_dir.clone());
+    let mot_dir = PathBuf::from(config.mot_dir.clone());
 
     info!("Initializing image directory at: {:?}", image_dir);
     MotService::init(&image_dir).map_err(|e| {
@@ -53,7 +53,7 @@ async fn main() -> ServiceResult<()> {
     })?;
 
     let has_station_image;
-    let station_image = match MotService::load_station_image(&config.default_station_image).await {
+    let station_image = match MotService::load_station_image(&image_dir, &config.default_station_image).await {
         Ok(img) => {
             has_station_image = img.is_some();
             img
@@ -85,12 +85,12 @@ async fn main() -> ServiceResult<()> {
             ServiceError::Server("Failed to acquire lock on application state".into())
         })?;
 
-        DlsService::update_output_file(&mut mut_guard).map_err(|e| {
+        DlsService::update_output_file(&dls_path, &mut mut_guard).map_err(|e| {
             error!("Failed to create initial output file: {}", e);
             ServiceError::FileProcessing("File creation error".into())
         })?;
 
-        MotService::update_mot_output(&mut mut_guard, &mot_dir).map_err(|e| {
+        MotService::update_mot_output(&mot_dir, &mut mut_guard).map_err(|e| {
             error!("Failed to initialize MOT images: {}", e);
             ServiceError::FileProcessing("MOT initialization error".into())
         })?;
@@ -98,8 +98,11 @@ async fn main() -> ServiceResult<()> {
 
     info!("Starting background ticker service");
     let state_arc = Arc::new(state_for_ticker);
+    let mot_dir_clone = mot_dir.clone();
+    let dls_path_clone = dls_path.clone();
+    let image_dir_clone = image_dir.clone();
     tokio::spawn(async move {
-        TickerService::start(state_arc).await;
+        TickerService::start(state_arc, mot_dir_clone, dls_path_clone, image_dir_clone).await;
     });
 
     info!("MOT slideshow using station image: {}", has_station_image);
@@ -108,21 +111,25 @@ async fn main() -> ServiceResult<()> {
     info!("Starting HTTP server at {}", bind_address);
     info!(
         "Using fixed paths: DLS output={}, Images={}, MOT={}",
-        DLS_OUTPUT_FILE, IMAGE_DIR, MOT_OUTPUT_DIR
+        config_data.dls_file,
+        config_data.image_dir,
+        config_data.mot_dir,
     );
 
     HttpServer::new(move || {
+        let cfg = config_data.clone();
         App::new()
             .app_data(state.clone())
-            .app_data(config_data.clone())
+            .app_data(cfg.clone())
             .wrap(Auth)
             .route(
                 "/track",
                 web::post().to(
                     |payload: Option<Multipart>,
                      json: Option<web::Json<Track>>,
-                     state: web::Data<Mutex<AppState>>| {
-                        handlers::track::post_track(payload, json, state)
+                     state: web::Data<Mutex<AppState>>,
+                     config: web::Data<Config>| {
+                        handlers::track::post_track(payload, json, state, config)
                     },
                 ),
             )
@@ -132,8 +139,9 @@ async fn main() -> ServiceResult<()> {
                 web::post().to(
                     |payload: Option<Multipart>,
                      json: Option<web::Json<Program>>,
-                     state: web::Data<Mutex<AppState>>| {
-                        handlers::program::post_program(payload, json, state)
+                     state: web::Data<Mutex<AppState>>,
+                     config: web::Data<Config>| {
+                        handlers::program::post_program(payload, json, state, config)
                     },
                 ),
             )

@@ -18,11 +18,13 @@ pub async fn post_program(
     payload: Option<Multipart>,
     json: Option<web::Json<Program>>,
     state: web::Data<Mutex<AppState>>,
+    config: web::Data<crate::config::Config>,
 ) -> Result<HttpResponse, Error> {
     let result = shared::process_content_update(
         payload,
         json,
         state,
+        config,
         form::PROGRAM_INFO_FIELD,
         |info: ProgramInfo, image| Program {
             id: uuid::Uuid::new_v4(),

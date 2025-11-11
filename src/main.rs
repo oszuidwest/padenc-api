@@ -1,7 +1,6 @@
 // Import all modules from lib.rs
-use padenc_api::{config, constants, errors, handlers, middleware, models, services, server};
+use padenc_api::{config, constants, errors, middleware, models, services, server};
 
-use actix_multipart::Multipart;
 use actix_web::{web, App, HttpServer};
 use log::{error, info};
 use middleware::auth::Auth;
@@ -11,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use config::Config;
 use constants::api::DEFAULT_SERVER_PORT;
 use errors::{ServiceError, ServiceResult};
-use models::data::{Program, Station, Track};
+use models::data::{Station};
 use models::AppState;
 use services::{DlsService, MotService, TickerService};
 

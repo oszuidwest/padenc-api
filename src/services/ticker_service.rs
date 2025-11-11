@@ -16,6 +16,81 @@ use crate::services::{ContentService, DlsService, MotService};
 pub struct TickerService;
 
 impl TickerService {
+    fn update_output(
+        state: &mut AppState,
+        now: chrono::DateTime<Utc>,
+        dls_file: &PathBuf,
+        mot_dir: &PathBuf,
+        previous_output_type: &mut Option<OutputType>,
+        previous_content_id: &mut Option<Uuid>,
+    ) {
+        let current_output_type = ContentService::get_active_output_type(state, now);
+
+        let current_content_id = match current_output_type {
+            OutputType::Track => state.track.as_ref().and_then(|t| t.get_id()),
+            OutputType::Program => state.program.as_ref().and_then(|p| p.get_id()),
+            OutputType::Station => state.station.as_ref().and_then(|s| s.get_id()),
+        };
+
+        let has_changed = match &*previous_output_type {
+            None => true,
+            Some(prev) => prev != &current_output_type || *previous_content_id != current_content_id,
+        };
+
+        if has_changed {
+            info!("Ticker: Content changed at {}", now);
+            match current_output_type {
+                OutputType::Track => {
+                    if let Some(track) = &state.track {
+                        let artist_display = track.item.artist.as_deref().unwrap_or("(no artist)");
+                        info!(
+                            "New content: Track \"{}\" by \"{}\" (ID: {:?})",
+                            track.item.title,
+                            artist_display,
+                            track.get_id()
+                        );
+                    }
+                }
+                OutputType::Program => {
+                    if let Some(program) = &state.program {
+                        info!(
+                            "New content: Program \"{}\" (ID: {:?})",
+                            program.name,
+                            program.get_id()
+                        );
+                    }
+                }
+                OutputType::Station => {
+                    if let Some(station) = &state.station {
+                        info!("New content: Station \"{}\"", station.name);
+                    }
+                }
+            }
+
+            if let Err(e) = DlsService::update_output_file(dls_file, state) {
+                error!("Ticker: Failed to update output file: {}", e);
+            }
+
+            if let Err(e) = MotService::update_mot_output(mot_dir, state) {
+                error!("Ticker: Failed to update MOT output: {}", e);
+            }
+
+            *previous_output_type = Some(current_output_type);
+            *previous_content_id = current_content_id;
+        }
+    }
+
+    fn maybe_run_cleanup(tick_count: u64, image_dir: &PathBuf, state: &mut AppState) {
+        if CLEANUP_INTERVAL_TICKS > 0 {
+            if tick_count % (CLEANUP_INTERVAL_TICKS as u64) == 0 {
+                debug!("Ticker: Running image cleanup (tick {})", tick_count);
+                if let Err(e) = MotService::cleanup_expired_images(image_dir, state) {
+                    error!("Ticker: Failed to clean up expired images: {}", e);
+                }
+            }
+        }
+    }
+
     pub async fn start(app_state: Arc<web::Data<Mutex<AppState>>>, mot_dir: PathBuf, dls_file: PathBuf, image_dir: PathBuf) {
         info!(
             "Starting ticker service with {}-millisecond interval",
@@ -30,76 +105,12 @@ impl TickerService {
             interval_timer.tick().await;
             tick_count = tick_count.wrapping_add(1);
 
-            // Get a lock on the app state and update the output file
             match app_state.lock() {
                 Ok(mut state) => {
-                    debug!("Ticker: Checking content expiration");
-
                     let now = Utc::now();
-                    let current_output_type =
-                        ContentService::get_active_output_type(&mut state, now);
 
-                    let current_content_id = match current_output_type {
-                        OutputType::Track => state.track.as_ref().and_then(|t| t.get_id()),
-                        OutputType::Program => state.program.as_ref().and_then(|p| p.get_id()),
-                        OutputType::Station => state.station.as_ref().and_then(|s| s.get_id()),
-                    };
-
-                    let has_changed = match &previous_output_type {
-                        None => true,
-                        Some(prev) => {
-                            prev != &current_output_type
-                                || previous_content_id != current_content_id
-                        }
-                    };
-
-                    if has_changed {
-                        info!("Ticker: Content changed at {}", now);
-                        match current_output_type {
-                            OutputType::Track => {
-                                if let Some(track) = &state.track {
-                                    let artist_display = track.item.artist.as_deref().unwrap_or("(no artist)");
-                                    info!(
-                                        "New content: Track \"{}\" by \"{}\" (ID: {:?})",
-                                        track.item.title,
-                                        artist_display,
-                                        track.get_id()
-                                    );
-                                }
-                            }
-                            OutputType::Program => {
-                                if let Some(program) = &state.program {
-                                    info!(
-                                        "New content: Program \"{}\" (ID: {:?})",
-                                        program.name,
-                                        program.get_id()
-                                    );
-                                }
-                            }
-                            OutputType::Station => {
-                                let station_name = &state.station.as_ref().unwrap().name;
-                                info!("New content: Station \"{}\"", station_name);
-                            }
-                        }
-
-                        if let Err(e) = DlsService::update_output_file(&dls_file, &mut state) {
-                            error!("Ticker: Failed to update output file: {}", e);
-                        }
-
-                        if let Err(e) = MotService::update_mot_output(&mot_dir, &mut state) {
-                            error!("Ticker: Failed to update MOT output: {}", e);
-                        }
-
-                        previous_output_type = Some(current_output_type);
-                        previous_content_id = current_content_id;
-                    }
-
-                    if tick_count % (CLEANUP_INTERVAL_TICKS as u64) == 0 {
-                        debug!("Ticker: Running image cleanup (tick {})", tick_count);
-                        if let Err(e) = MotService::cleanup_expired_images(&image_dir, &mut state) {
-                            error!("Ticker: Failed to clean up expired images: {}", e);
-                        }
-                    }
+                    Self::update_output(&mut state, now, &dls_file, &mot_dir, &mut previous_output_type, &mut previous_content_id);
+                    Self::maybe_run_cleanup(tick_count, &image_dir, &mut state);
                 }
                 Err(e) => {
                     error!("Ticker: Failed to acquire lock on app state: {}", e);

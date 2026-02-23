@@ -4,17 +4,17 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-actix-web = "4.4.0"
+actix-web = "4.13.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
-tokio = { version = "1.32", features = ["full"] }
+tokio = { version = "1.49", features = ["full"] }
 log = "0.4"
-env_logger = "0.10"
+env_logger = "0.11"
 dotenv = "0.15"
-thiserror = "1.0"
+thiserror = "2.0"
 anyhow = "1.0"
 futures-core = "0.3"
 futures = "0.3"
-actix-multipart = "0.6"
-uuid = { version = "1.4", features = ["v4", "serde"] }
+actix-multipart = "0.7"
+uuid = { version = "1.21", features = ["v4", "serde"] }

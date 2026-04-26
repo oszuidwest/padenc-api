@@ -37,3 +37,38 @@ impl Config {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+
+    #[test]
+    fn from_env_reads_required_and_defaults() {
+        // Set required vars
+        env::set_var("STATION_NAME", "MyStation");
+        env::set_var("API_KEY", "secret");
+
+        // Optional var
+        env::set_var("DEFAULT_STATION_IMAGE", "default.png");
+
+        // Ensure optional/defaulted vars are not set
+        env::remove_var("PADENC_IMAGE_DIR");
+        env::remove_var("PADENC_MOT_DIR");
+        env::remove_var("PADENC_DLS_FILE");
+
+        let cfg = Config::from_env().expect("should build config from env");
+
+        assert_eq!(cfg.station_name, "MyStation");
+        assert_eq!(cfg.api_key, "secret");
+        assert_eq!(cfg.default_station_image.as_deref(), Some("default.png"));
+        assert_eq!(cfg.image_dir, "/tmp/padenc/images");
+        assert_eq!(cfg.mot_dir, "/data/mot");
+        assert_eq!(cfg.dls_file, "/data/dls.txt");
+
+        // Clean up
+        env::remove_var("STATION_NAME");
+        env::remove_var("API_KEY");
+        env::remove_var("DEFAULT_STATION_IMAGE");
+    }
+}

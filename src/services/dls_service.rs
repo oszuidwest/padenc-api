@@ -24,31 +24,27 @@ impl DlsService {
 
         let content = match output_type {
             OutputType::Track => {
-                if let Some(track) = &app_state.track {
-                    let title = &track.item.title;
-                    let artist = track.item.artist.as_deref().unwrap_or("");
-                    debug!("Writing track info: {} - {}",
-                        if artist.is_empty() { "(no artist)" } else { artist },
-                        title
-                    );
-                    Self::generate_track_content(artist, title, toggle_value)
-                } else {
-                    let station_name = &app_state.station.as_ref().unwrap().name;
-                    Self::generate_station_content(station_name, toggle_value)
-                }
+                let track = &app_state.track.as_ref().expect("Track info missing");
+
+                let title = &track.item.title;
+                let artist = track.item.artist.as_deref().unwrap_or("");
+                debug!("s {} - {}",
+                    if artist.is_empty() { "(no artist)" } else { artist },
+                    title
+                );
+                Self::generate_track_content(artist, title, toggle_value)
             },
             OutputType::Program => {
-                if let Some(program) = &app_state.program {
-                    let program_name = &program.name;
-                    debug!("Writing program info: {}", program_name);
-                    Self::generate_program_content(program_name, toggle_value)
-                } else {
-                    let station_name = &app_state.station.as_ref().unwrap().name;
-                    Self::generate_station_content(station_name, toggle_value)
-                }
+                let program = &app_state.program.as_ref().expect("Program info missing");
+
+                let program_name = &program.name;
+                debug!("Writing program info: {}", program_name);
+                Self::generate_program_content(program_name, toggle_value)
             },
             OutputType::Station => {
-                let station_name = &app_state.station.as_ref().unwrap().name;
+                let station = &app_state.station.as_ref().expect("Station info missing");
+
+                let station_name = &station.name;
                 debug!("Writing station info: {}", station_name);
                 Self::generate_station_content(station_name, toggle_value)
             }
@@ -148,5 +144,97 @@ impl DlsService {
             toggle_value,
             station_name
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::data::Station;
+    use crate::models::AppState;
+    use std::fs;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn generate_station_content_includes_tag_and_name() {
+        let s = DlsService::generate_station_content("MyStation", 1);
+        assert!(s.contains(&format!("DL_PLUS_TAG={} 0 9", STATION_TAG)));
+        assert!(s.contains("DL_PLUS_ITEM_RUNNING=0"));
+        assert!(s.ends_with("MyStation"));
+    }
+
+    #[test]
+    fn generate_station_content_toggle_value() {
+        let s = DlsService::generate_station_content("MyStation", 0);
+        assert!(s.contains("DL_PLUS_ITEM_TOGGLE=0"));
+
+        let s = DlsService::generate_station_content("MyStation", 1);
+        assert!(s.contains("DL_PLUS_ITEM_TOGGLE=1"));
+    }
+
+    #[test]
+    fn generate_program_content_includes_tag_and_name() {
+        let p = DlsService::generate_program_content("MyProgram", 0);
+        assert!(p.contains(&format!("DL_PLUS_TAG={} 0 9", PROGRAM_TAG)));
+        assert!(p.contains("DL_PLUS_ITEM_RUNNING=0"));
+        assert!(p.ends_with("MyProgram"));
+    }
+
+    #[test]
+    fn generate_program_content_toggle_value() {
+        let p = DlsService::generate_program_content("MyProgram", 0);
+        assert!(p.contains("DL_PLUS_ITEM_TOGGLE=0"));
+
+        let p = DlsService::generate_program_content("MyProgram", 1);
+        assert!(p.contains("DL_PLUS_ITEM_TOGGLE=1"));
+    }
+
+    #[test]
+    fn generate_track_content_with_artist_formats_both_tags() {
+        let t = DlsService::generate_track_content("Artist", "Title", 1);
+        assert!(t.contains(&format!("DL_PLUS_TAG={} 0 6", ARTIST_TAG)));
+        assert!(t.contains(&format!("DL_PLUS_TAG={} 9 5", TITLE_TAG)));
+        assert!(t.contains("DL_PLUS_ITEM_RUNNING=1"));
+        assert!(t.ends_with("Artist - Title"));
+    }
+
+    #[test]
+    fn generate_track_content_without_artist_uses_title_tag_only() {
+        let t = DlsService::generate_track_content("", "SoloTitle", 0);
+        assert!(t.contains(&format!("DL_PLUS_TAG={} 0 9", TITLE_TAG)));
+        assert!(t.contains("DL_PLUS_ITEM_RUNNING=1"));
+        assert!(t.ends_with("SoloTitle"));
+    }
+
+    #[test]
+    fn generate_track_content_toggle_value() {
+        let t = DlsService::generate_track_content("", "SoloTitle", 0);
+        assert!(t.contains("DL_PLUS_ITEM_TOGGLE=0"));
+
+        let t = DlsService::generate_track_content("", "SoloTitle", 1);
+        assert!(t.contains("DL_PLUS_ITEM_TOGGLE=1"));
+    }
+
+    #[test]
+    fn update_output_file_writes_station_content_and_toggles() {
+        // Create a temp file
+        let tmp = NamedTempFile::new().expect("create tmp file");
+        let path = tmp.path().to_path_buf();
+
+        // Minimal app state with only station
+        let mut app = AppState::default();
+        app.station = Some(Station { name: "StationX".into(), id: uuid::Uuid::new_v4(), image: None });
+        app.dl_plus_item_toggle = false; // expect toggle to flip to true (1)
+
+        // Call update_output_file
+        let res = DlsService::update_output_file(&path, &mut app);
+        assert!(res.is_ok());
+
+        // Read file and assert contents
+        let content = fs::read_to_string(&path).expect("read tmp file");
+        assert!(content.contains("StationX"));
+        assert!(content.contains("DL_PLUS_ITEM_TOGGLE=1"));
+        // toggle value in app state should have flipped
+        assert!(app.dl_plus_item_toggle);
     }
 }

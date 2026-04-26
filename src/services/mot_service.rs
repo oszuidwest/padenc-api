@@ -263,3 +263,202 @@ impl MotService {
         ))
     }
 }
+
+// TODO: AI heeft het onderstaande geschreven. Nog helemaal nalopen!
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+    use std::fs;
+    use crate::models::data::{Image, Station, Track, Program, Item};
+    use crate::models::AppState;
+    use chrono::{Utc, Duration};
+    use uuid::Uuid;
+
+    #[test]
+    fn init_creates_directory() {
+        let temp_dir = tempdir().unwrap();
+        let sub_dir = temp_dir.path().join("images");
+        assert!(!sub_dir.exists());
+        MotService::init(&sub_dir).unwrap();
+        assert!(sub_dir.exists());
+    }
+
+    #[tokio::test]
+    async fn store_image_creates_file_with_correct_content_jpeg() {
+        let temp_dir = tempdir().unwrap();
+        let image_data = b"fake jpeg data";
+        let (path, filename) = MotService::store_image(&temp_dir.path(), "image/jpeg", image_data).await.unwrap();
+        assert!(path.exists());
+        assert_eq!(fs::read(&path).unwrap(), image_data);
+        assert!(filename.ends_with(".jpg"));
+    }
+
+    #[tokio::test]
+    async fn store_image_creates_file_png() {
+        let temp_dir = tempdir().unwrap();
+        let image_data = b"fake png data";
+        let (path, filename) = MotService::store_image(&temp_dir.path(), "image/png", image_data).await.unwrap();
+        assert!(path.exists());
+        assert_eq!(fs::read(&path).unwrap(), image_data);
+        assert!(filename.ends_with(".png"));
+    }
+
+    #[tokio::test]
+    async fn store_image_invalid_type() {
+        let temp_dir = tempdir().unwrap();
+        let result = MotService::store_image(&temp_dir.path(), "image/gif", b"data").await;
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn is_valid_image_type_accepts_supported() {
+        assert!(MotService::is_valid_image_type("image/jpeg"));
+        assert!(MotService::is_valid_image_type("image/png"));
+        assert!(!MotService::is_valid_image_type("image/gif"));
+        assert!(!MotService::is_valid_image_type("text/plain"));
+    }
+
+    #[test]
+    fn cleanup_expired_images_removes_expired_and_keeps_active() {
+        let temp_dir = tempdir().unwrap();
+        let expired_img_path = temp_dir.path().join("expired.jpg");
+        fs::write(&expired_img_path, b"expired").unwrap();
+        let active_img_path = temp_dir.path().join("active.jpg");
+        fs::write(&active_img_path, b"active").unwrap();
+        let non_img_path = temp_dir.path().join("nonimg.txt");
+        fs::write(&non_img_path, b"nonimg").unwrap();
+
+        let mut app = AppState::default();
+        let expired_track = Track {
+            id: Uuid::new_v4(),
+            item: Item { title: "Expired".into(), artist: None },
+            expires_at: Some(Utc::now() - Duration::seconds(1)),
+            image: Some(Image { content_type: Some("image/jpeg".into()), path: Some(expired_img_path.clone()), filename: Some("expired.jpg".into()) }),
+        };
+        app.track = Some(expired_track);
+        let active_program = Program {
+            id: Uuid::new_v4(),
+            name: "Active".into(),
+            expires_at: None,
+            image: Some(Image { content_type: Some("image/jpeg".into()), path: Some(active_img_path.clone()), filename: Some("active.jpg".into()) }),
+        };
+        app.program = Some(active_program);
+
+        MotService::cleanup_expired_images(&temp_dir.path(), &mut app).unwrap();
+
+        assert!(!expired_img_path.exists());
+        assert!(active_img_path.exists());
+        assert!(non_img_path.exists()); // non-image should remain
+        assert!(app.track.is_none()); // expired track unset
+    }
+
+    #[test]
+    fn init_mot_dir_creates_and_cleans() {
+        let temp_dir = tempdir().unwrap();
+        let sub_dir = temp_dir.path().join("mot");
+        fs::create_dir(&sub_dir).unwrap();
+        let file_path = sub_dir.join("old.jpg");
+        fs::write(&file_path, b"old").unwrap();
+        assert!(file_path.exists());
+        MotService::init_mot_dir(&sub_dir).unwrap();
+        assert!(!file_path.exists());
+    }
+
+    #[test]
+    fn update_mot_output_copies_active_image() {
+        let temp_dir = tempdir().unwrap();
+        let mot_dir = temp_dir.path().join("mot");
+        let img_dir = temp_dir.path().join("img");
+        fs::create_dir(&img_dir).unwrap();
+        let img_path = img_dir.join("test.jpg");
+        fs::write(&img_path, b"image").unwrap();
+
+        let mut app = AppState::default();
+        let station = Station {
+            id: Uuid::new_v4(),
+            name: "Station".into(),
+            image: Some(Image { content_type: Some("image/jpeg".into()), path: Some(img_path.clone()), filename: Some("test.jpg".into()) }),
+        };
+        app.station = Some(station);
+
+        MotService::update_mot_output(&mot_dir, &mut app).unwrap();
+
+        let entries: Vec<_> = fs::read_dir(&mot_dir).unwrap().map(|e| e.unwrap().path()).collect();
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].file_name().unwrap().to_str().unwrap().contains("test.jpg"));
+        assert_eq!(fs::read(&entries[0]).unwrap(), b"image");
+    }
+
+    #[test]
+    fn update_mot_output_no_image_leaves_empty() {
+        let temp_dir = tempdir().unwrap();
+        let mot_dir = temp_dir.path().join("mot");
+        let mut app = AppState::default();
+        let station = Station {
+            id: Uuid::new_v4(),
+            name: "Station".into(),
+            image: None,
+        };
+        app.station = Some(station);
+
+        MotService::update_mot_output(&mot_dir, &mut app).unwrap();
+
+        let entries: Vec<_> = fs::read_dir(&mot_dir).unwrap().collect();
+        assert_eq!(entries.len(), 0);
+    }
+
+    #[test]
+    fn get_active_image_returns_correct() {
+        let mut app = AppState::default();
+        let img = Image { content_type: None, path: None, filename: None };
+        let track = Track {
+            id: Uuid::new_v4(),
+            item: Item { title: "T".into(), artist: None },
+            expires_at: None,
+            image: Some(img.clone()),
+        };
+        app.track = Some(track);
+        assert!(MotService::get_active_image(&app, &OutputType::Track).is_some());
+        assert!(MotService::get_active_image(&app, &OutputType::Program).is_none());
+        assert!(MotService::get_active_image(&app, &OutputType::Station).is_none());
+    }
+
+    #[tokio::test]
+    async fn load_station_image_loads_and_stores() {
+        let temp_dir = tempdir().unwrap();
+        let img_dir = temp_dir.path().join("img");
+        fs::create_dir(&img_dir).unwrap();
+        let default_img_path = temp_dir.path().join("default.jpg");
+        fs::write(&default_img_path, b"default image").unwrap();
+
+        let result = MotService::load_station_image(&img_dir, &Some(default_img_path.to_string_lossy().to_string())).await.unwrap();
+        assert!(result.is_some());
+        let image = result.unwrap();
+        assert!(image.path.as_ref().unwrap().exists());
+        assert_eq!(fs::read(image.path.unwrap()).unwrap(), b"default image");
+    }
+
+    #[tokio::test]
+    async fn load_station_image_none_returns_none() {
+        let temp_dir = tempdir().unwrap();
+        let img_dir = temp_dir.path().join("img");
+        fs::create_dir(&img_dir).unwrap();
+
+        let result = MotService::load_station_image(&img_dir, &None).await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn detect_mime_type_detects_correctly() {
+        let temp_dir = tempdir().unwrap();
+        let jpg_path = temp_dir.path().join("test.jpg");
+        assert_eq!(MotService::detect_mime_type(&jpg_path).unwrap(), "image/jpeg");
+        let jpeg_path = temp_dir.path().join("test.jpeg");
+        assert_eq!(MotService::detect_mime_type(&jpeg_path).unwrap(), "image/jpeg");
+        let png_path = temp_dir.path().join("test.png");
+        assert_eq!(MotService::detect_mime_type(&png_path).unwrap(), "image/png");
+        let txt_path = temp_dir.path().join("test.txt");
+        assert!(MotService::detect_mime_type(&txt_path).is_err());
+    }
+}

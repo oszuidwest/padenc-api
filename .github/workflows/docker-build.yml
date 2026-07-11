@@ -53,3 +53,20 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  cleanup:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+
+    steps:
+      # Every push of a rebuilt image orphans the previous manifest set
+      # (manifest list + per-arch children) as untagged versions. This
+      # deletes only truly unreferenced manifests; arch children of tagged
+      # manifest lists are preserved.
+      - name: Delete orphaned untagged images
+        uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          packages: padenc-api
+          validate: true

@@ -41,11 +41,17 @@ pub async fn handle_multipart_upload<T: DeserializeOwned>(
     let mut payload = payload;
     
     while let Ok(Some(mut field)) = payload.try_next().await {
-        let content_disposition = field.content_disposition();
-        let field_name = content_disposition.get_name().unwrap_or("");
-        
+        // actix-multipart 0.8 returns the content disposition as an Option;
+        // own the field name so the immutable borrow of `field` does not clash
+        // with the mutable use further down.
+        let field_name = field
+            .content_disposition()
+            .and_then(|cd| cd.get_name())
+            .map(|name| name.to_owned())
+            .unwrap_or_default();
+
         debug!("Processing multipart field: {}", field_name);
-        
+
         if field_name == info_field_name {
             info = Some(extract_json(info_field_name, &mut field).await?);
         } else if field_name == IMAGE_FIELD {

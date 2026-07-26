@@ -7,7 +7,6 @@ use serde_json;
 use std::path::Path;
 
 use crate::constants::form::IMAGE_FIELD;
-use crate::constants::fs::IMAGE_DIR;
 use crate::models::data::Image;
 use crate::services::MotService;
 
@@ -34,7 +33,7 @@ pub async fn extract_json<T: DeserializeOwned>(
 
 pub async fn handle_multipart_upload<T: DeserializeOwned>(
     payload: Multipart,
-    image_dir: Option<&Path>,
+    image_dir: &Path,
     info_field_name: &str,
 ) -> Result<(Option<T>, Option<Image>), Error> {
     let mut info: Option<T> = None;
@@ -62,7 +61,7 @@ pub async fn handle_multipart_upload<T: DeserializeOwned>(
             
             if !image_data.is_empty() && content_type.is_some() {
                 let content_type_str = content_type.unwrap();
-                if let Ok((path, filename)) = MotService::store_image(&image_data, &content_type_str, image_dir.unwrap_or_else(|| Path::new(IMAGE_DIR))).await {
+                if let Ok((path, filename)) = MotService::store_image(&image_dir, &content_type_str, &image_data).await {
                     image = Some(Image {
                         content_type: Some(content_type_str),
                         path: Some(path),
@@ -90,5 +89,36 @@ pub fn cleanup_image(image_path: &Option<std::path::PathBuf>) {
                 error!("Failed to remove image: {}", e);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn cleanup_image_removes_existing_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("img.jpg");
+        fs::write(&path, b"data").unwrap();
+        assert!(path.exists());
+
+        cleanup_image(&Some(path.clone()));
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn cleanup_image_none_is_noop() {
+        cleanup_image(&None); // must not panic
+    }
+
+    #[test]
+    fn cleanup_image_nonexistent_path_is_noop() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("does-not-exist.jpg");
+        assert!(!path.exists());
+        cleanup_image(&Some(path)); // must not panic, nothing to remove
     }
 }

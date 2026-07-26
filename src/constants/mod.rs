@@ -4,11 +4,7 @@ pub mod api {
     pub const BEARER_PREFIX: &str = "Bearer ";
 }
 
-pub mod fs {
-    pub const IMAGE_DIR: &str = "/tmp/padenc/images";
-    pub const MOT_OUTPUT_DIR: &str = "/data/mot";
-    pub const DLS_OUTPUT_FILE: &str = "/data/dls.txt";
-
+pub mod mime {
     pub const SUPPORTED_MIME_TYPES: [&str; 2] = ["image/jpeg", "image/png"];
 
     pub mod extensions {

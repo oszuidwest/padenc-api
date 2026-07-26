@@ -70,3 +70,28 @@ impl HasId for Station {
         Some(self.id)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn has_id_returns_own_uuid_for_each_type() {
+        let tid = Uuid::new_v4();
+        let track = Track {
+            id: tid,
+            item: Item { title: "T".into(), artist: None },
+            expires_at: None,
+            image: None,
+        };
+        assert_eq!(track.get_id(), Some(tid));
+
+        let pid = Uuid::new_v4();
+        let program = Program { id: pid, name: "P".into(), expires_at: None, image: None };
+        assert_eq!(program.get_id(), Some(pid));
+
+        let sid = Uuid::new_v4();
+        let station = Station { id: sid, name: "S".into(), image: None };
+        assert_eq!(station.get_id(), Some(sid));
+    }
+}

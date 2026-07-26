@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build & test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+
+      # Informational only: surfaces style/lint issues without blocking merges.
+      - name: Check formatting
+        continue-on-error: true
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        continue-on-error: true
+        run: cargo clippy --all-targets --all-features
+
+      # Authoritative gate: a dependency bump that breaks the build or the
+      # tests fails here. --locked ensures the committed Cargo.lock is used.
+      - name: Build
+        run: cargo build --locked --all-targets
+
+      - name: Test
+        run: cargo test --locked --all-targets

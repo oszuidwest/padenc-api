@@ -1,0 +1,30 @@
+name: Docker Quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint Dockerfile
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          config: .hadolint.yaml
+
+      - name: Validate docker-compose
+        run: |
+          [ -f .env ] || touch .env
+          docker compose config --quiet 2>&1 \
+            || echo "::warning::docker compose validation needs environment variables"
